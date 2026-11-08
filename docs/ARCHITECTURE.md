@@ -31,8 +31,14 @@ browser ──▶ web (FastAPI, Jinja2, HTMX) ──▶ SQLite (WAL + FTS5) ◀�
 - **Idempotence.** `UNIQUE(theme_id, day)`: a second run the same day skips existing
   articles; `--force` replaces them and reconsiders the items fetched that day
   (`known_canonical_urls(before=start of day)`).
-- **Run lock** = a `runs` row in status `running` younger than 3 hours (`start_run`), so
-  the CLI and the scheduler can never run concurrently, even across containers.
+- **Run lock** = a `runs` row in status `running` whose heartbeat (refreshed before each
+  theme and each cluster) is younger than 30 minutes (`start_run`, `heartbeat_run`), so the
+  CLI and the scheduler can never run concurrently, even across containers.
+- **Outages are not quiet days.** A theme where every collector that had work failed, or
+  where the model failed on every selected cluster, ends in `error` and no article is saved
+  (the next run retries it).
+- **Extraction only for the top N.** Collection and filtering use titles and snippets;
+  trafilatura is only called for the primary item of the selected clusters (≤ 8 per theme).
 - **Item statuses.** `used` = linked from an entry; `selected` = in a rendered cluster but
   not linked (same source already linked); `dropped` = everything else. Old items keep
   their row (URL dedupe) but their `content_text` is blanked after 30 days.

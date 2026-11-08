@@ -131,10 +131,14 @@ When the content is empty the text line reads `(texte indisponible, utilise le t
 
 ### Retry and post-validation policy (`veille/pipeline/summarize.py`)
 
-- `LLMError` (invalid JSON, non-object, wrong field types, HTTP error, read timeout):
-  **retry once**, then the cluster is dropped (its items get status `dropped`). Never crashes.
-- `LLMUnavailableError` (connection refused, 503) on **both** attempts: the error is raised
-  and the whole theme is marked `error` for this run (other themes continue; run `partial`).
+- `LLMError` (invalid JSON, non-object, wrong field types, HTTP error): **retry once**, then
+  the cluster is dropped (its items get status `dropped`). Never crashes.
+- `LLMUnavailableError` (connection refused, 503, any timeout: Ollama busy) on both attempts:
+  the cluster is marked unavailable; **two consecutive unavailable clusters stop the theme**
+  (status `error` for this run, nothing saved; other themes continue, run `partial`).
+- If the selected clusters are not empty but **none** produced an entry and none was
+  explicitly rejected with `relevant == false`, the theme is in `error` and nothing is
+  saved: a model failure is never published as "Rien de notable aujourd'hui."
 - `relevant == false`: cluster dropped.
 - Headline: whitespace collapsed, surrounding quotes and final period removed, **trimmed to
   12 words** (no ellipsis).
