@@ -18,10 +18,13 @@ from veille.clock import SystemClock
 from veille.config import Settings
 from veille.contracts import LLM, Clock, Store
 from veille.web.auth import (
-    MIN_SECRET_LENGTH,
     SESSION_MAX_AGE_S,
     AuthRequiredError,
     LoginRateLimiter,
+    SessionRegistry,
+    VerifyGate,
+    check_password_hash,
+    check_session_secret,
     require_auth,
 )
 from veille.web.routes import admin, journal, themes
@@ -83,11 +86,10 @@ def create_app(
     clock: Clock | None = None,
 ) -> FastAPI:
     secret = settings.session_secret.get_secret_value()
-    if len(secret) < MIN_SECRET_LENGTH:
-        raise ValueError(
-            f"SESSION_SECRET must be set and at least {MIN_SECRET_LENGTH} characters long"
-        )
-    if not settings.app_password_hash.get_secret_value():
+    check_session_secret(secret)
+    password_hash = settings.app_password_hash.get_secret_value()
+    check_password_hash(password_hash)
+    if not password_hash:
         logger.warning("APP_PASSWORD_HASH is empty: login is impossible")
 
     app = FastAPI(
@@ -106,6 +108,8 @@ def create_app(
     app.state.clock = resolved_clock
     app.state.templates = build_templates(settings.tz)
     app.state.login_limiter = LoginRateLimiter(resolved_clock)
+    app.state.verify_gate = VerifyGate()
+    app.state.sessions = SessionRegistry(resolved_clock)
 
     protected = [Depends(require_auth)]
     app.include_router(auth_routes.router)

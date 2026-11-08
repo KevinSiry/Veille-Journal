@@ -20,7 +20,7 @@ from .fakes import FakeLLM, FakeStore
 PASSWORD = "correct horse battery staple"
 # Cheap parameters: verification cost follows the hash's own parameters.
 PASSWORD_HASH = PasswordHasher(time_cost=1, memory_cost=8, parallelism=1).hash(PASSWORD)
-SECRET = "s" * 40
+SECRET = "Qx7-mP2_vL9kR4tZ8wN3bY6cH1jF5dG0sA"  # random-looking: placeholders are refused
 # 2026-11-08 08:00 UTC == 09:00 Europe/Paris.
 NOW = datetime(2026, 11, 8, 8, 0, tzinfo=UTC)
 
