@@ -90,6 +90,8 @@ class FakeStore:
         return [s for s in self.sources.values() if s.theme_id == theme_id]
 
     def add_source(self, theme_id: int, url: str, label: str) -> Source:
+        if any(s.theme_id == theme_id and s.url == url for s in self.sources.values()):
+            raise ValueError(f"Source impossible à ajouter : {url}")  # like the real store
         source = Source(next(self._ids), theme_id, url, label, True)
         self.sources[source.id] = source
         return source

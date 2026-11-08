@@ -44,6 +44,7 @@ MSG_URL_REQUIRED = "L'adresse du flux est obligatoire."
 MSG_URL_TOO_LONG = "L'adresse du flux est trop longue."
 MSG_LLM_BUSY = "Le modèle est occupé ou indisponible, réessayez plus tard."
 MSG_LLM_EMPTY = "Le modèle n'a proposé aucun mot-clé exploitable, réessayez."
+MSG_SOURCE_DUPLICATE = "Ce flux est déjà suivi pour ce thème."
 
 # Keyword suggestion runs in a small dedicated pool so a hung model call cannot block
 # the request beyond ``keyword_suggest_timeout_s``.
@@ -278,6 +279,9 @@ def add_source(
         error = MSG_URL_REQUIRED
     elif len(url) > MAX_URL:
         error = MSG_URL_TOO_LONG
+    elif any(source.url == url for source in store.list_sources(theme_id)):
+        # Checked before validating, to avoid a useless fetch.
+        error = MSG_SOURCE_DUPLICATE
     else:
         validator: Callable[[str], str] = request.app.state.feed_validator
         try:
@@ -285,8 +289,13 @@ def add_source(
         except (CollectError, UnsafeURLError) as exc:
             error = str(exc) or "Ce flux n'a pas pu être validé."
         else:
-            store.add_source(theme_id, url, label or title.strip()[:MAX_LABEL] or url)
-            return RedirectResponse(f"/themes/{theme_id}#sources", status_code=303)
+            try:
+                store.add_source(theme_id, url, label or title.strip()[:MAX_LABEL] or url)
+            except ValueError:
+                # Concurrent insert of the same URL (UNIQUE constraint).
+                error = MSG_SOURCE_DUPLICATE
+            else:
+                return RedirectResponse(f"/themes/{theme_id}#sources", status_code=303)
     return _render_edit(
         request, store, theme, source_error=error, source_form=source_form, status_code=400
     )
