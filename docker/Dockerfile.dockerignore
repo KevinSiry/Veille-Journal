@@ -1,0 +1,27 @@
+# Build context = repository root. Only pyproject.toml, uv.lock, README.md and src/ are needed.
+**/.git
+.github
+.venv
+**/__pycache__
+**/*.py[cod]
+.pytest_cache
+.mypy_cache
+.ruff_cache
+.coverage
+coverage.xml
+htmlcov
+dist
+build
+*.egg-info
+tests
+docs
+data
+**/.env
+**/.env.*
+!.env.example
+*.db
+*.db-wal
+*.db-shm
+.worktrees
+.idea
+.vscode
