@@ -46,7 +46,6 @@ def test_params_and_mapping(collector: SearxngCollector, mock_router: respx.Mock
         "q": "intelligence artificielle",
         "format": "json",
         "categories": "news",
-        "time_range": "day",
         "language": "all",
     }
     assert [i.url for i in items] == [
@@ -182,3 +181,9 @@ def test_parse_published(value: object, expected: datetime | None) -> None:
     assert result == expected
     if result is not None:
         assert result.tzinfo is UTC
+
+
+def test_time_range_is_opt_in(settings: Settings) -> None:
+    with_range = SearxngCollector(settings.model_copy(update={"searxng_time_range": "week"}))
+    assert with_range.build_params("x")["time_range"] == "week"
+    assert "time_range" not in SearxngCollector(settings).build_params("x")

@@ -98,15 +98,14 @@ class SearxngCollector:
     ) -> None:
         self.close()
 
-    @staticmethod
-    def build_params(query: str) -> dict[str, str]:
-        return {
-            "q": query,
-            "format": "json",
-            "categories": "news",
-            "time_range": "day",
-            "language": "all",
-        }
+    def build_params(self, query: str) -> dict[str, str]:
+        params = {"q": query, "format": "json", "categories": "news", "language": "all"}
+        # SearXNG silently skips every engine without time_range support when the
+        # parameter is set, which leaves almost no news engine. Recency is enforced by
+        # the pipeline (LOOKBACK_HOURS) instead; SEARXNG_TIME_RANGE can re-enable it.
+        if self._settings.searxng_time_range:
+            params["time_range"] = self._settings.searxng_time_range
+        return params
 
     def has_work(self, theme: Theme, sources: Sequence[Source]) -> bool:
         return bool(theme_queries(theme, self._settings.max_keywords_queries))

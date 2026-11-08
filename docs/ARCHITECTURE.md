@@ -83,7 +83,11 @@ MAJOR finding was fixed. Remaining minor items:
   are searchable. A plain-text FTS column would be cleaner.
 - **Redirected items** keep their original canonical URL as identity; an item reached through
   two different short links may be collected twice on different nights.
-- **SearXNG engines**: only some news engines honour `time_range=day`; results depend on
+- **SearXNG time filter off by default** (deviation from the brief's `time_range=day`): with
+  it, SearXNG drops every engine lacking time-range support and a real run collected 0
+  items. Recency comes from `LOOKBACK_HOURS`; undated results are kept (URL dedupe stops
+  repeats). `SEARXNG_TIME_RANGE=day` restores the original behaviour.
+- **SearXNG engines**: results depend on
   which engines answer from the VPS. `veille doctor` reports SearXNG as KO when a common query
   returns nothing and lists the failing engines.
 - **Small duplications** left in place: `Store.list_articles_for_day` is unused by the web

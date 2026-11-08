@@ -5,6 +5,7 @@ from __future__ import annotations
 from datetime import time
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 from zoneinfo import ZoneInfo
 
 from pydantic import Field, SecretStr, field_validator
@@ -41,6 +42,8 @@ class Settings(BaseSettings):
     keyword_suggest_timeout_s: float = Field(default=60.0, gt=0)
     max_keywords_queries: int = 5
     searxng_results_per_query: int = 10
+    # '' (default) = no SearXNG time filter; 'day' | 'week' | 'month' | 'year' otherwise.
+    searxng_time_range: Literal["", "day", "week", "month", "year"] = ""
     http_timeout_s: float = 15.0
     max_page_bytes: int = 2 * 1024 * 1024
     content_max_chars: int = 3000
