@@ -1,0 +1,17 @@
+{% extends "base.html" %}
+{% from "_macros.html" import theme_filter, pagination %}
+{% block title %}Archives{% endblock %}
+{% block content %}
+<h1>Archives</h1>
+{{ theme_filter("/archive", themes, theme_id) }}
+{% if days %}
+<ul>
+  {% for d in days %}
+  <li><a href="/archive/{{ d.isoformat() }}{% if theme_id is not none %}?theme={{ theme_id }}{% endif %}">{{ d | fr_date }}</a></li>
+  {% endfor %}
+</ul>
+{% else %}
+<p class="muted">Aucun article archivé.</p>
+{% endif %}
+{{ pagination(pager, "/archive?" ~ ("theme=" ~ theme_id ~ "&" if theme_id is not none else "")) }}
+{% endblock %}

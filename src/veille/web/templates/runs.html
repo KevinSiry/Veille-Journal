@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+{% block title %}Exécutions{% endblock %}
+{% block content %}
+<h1>Exécutions</h1>
+{% if not entries %}
+<p class="muted">Aucune exécution enregistrée.</p>
+{% endif %}
+{% for entry in entries %}
+{% set run = entry.run %}
+<article>
+  <header>
+    <h2>Exécution n° {{ run.id }} — {{ run.status }}</h2>
+    <small class="muted">Déclenchement : {{ run.trigger }} · début {{ run.started_at | fr_datetime }} · fin {{ run.finished_at | fr_datetime }}</small>
+  </header>
+  {% if run.error %}<p class="error">{{ run.error }}</p>{% endif %}
+  {% if entry.themes %}
+  <div class="table-wrap">
+  <table>
+    <thead>
+      <tr>
+        <th scope="col">Thème</th><th scope="col">État</th><th scope="col">Collectés</th>
+        <th scope="col">Nouveaux</th><th scope="col">Groupes</th><th scope="col">Retenus</th>
+        <th scope="col">Écartés</th><th scope="col">Appels LLM</th><th scope="col">Jetons (est.)</th>
+        <th scope="col">Durée (s)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in entry.themes %}
+      <tr>
+        <td>{{ row.theme_name }}</td>
+        <td>{{ row.status }}{% if row.error %} <small class="error">{{ row.error }}</small>{% endif %}</td>
+        <td>{{ row.collected }}</td><td>{{ row.new }}</td><td>{{ row.clusters }}</td>
+        <td>{{ row.kept }}</td><td>{{ row.dropped }}</td><td>{{ row.llm_calls }}</td>
+        <td>{{ row.tokens_estimated }}</td><td>{{ "%.1f" | format(row.duration_s) }}</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% endif %}
+</article>
+{% endfor %}
+{% endblock %}

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% from "_macros.html" import article_body %}
+{% block title %}{{ day | fr_date }}{% endblock %}
+{% block content %}
+<hgroup>
+  <h1>{% if is_today %}Aujourd'hui{% else %}Journal du jour{% endif %}</h1>
+  <p>{{ day | fr_date }}</p>
+</hgroup>
+<nav class="day-nav" aria-label="Navigation entre les jours">
+  {% if previous_day %}<a href="/?day={{ previous_day.isoformat() }}" rel="prev">← {{ previous_day | fr_date }}</a>{% else %}<span></span>{% endif %}
+  {% if not is_today %}<a href="/">Aujourd'hui</a>{% endif %}
+  {% if next_day %}<a href="/?day={{ next_day.isoformat() }}" rel="next">{{ next_day | fr_date }} →</a>{% else %}<span></span>{% endif %}
+</nav>
+{% if not blocks %}
+<p>Aucun thème actif. <a href="/themes">Créer un thème</a>.</p>
+{% endif %}
+{% for block in blocks %}
+<article>
+  <header><h2>{{ block.theme.name }}</h2></header>
+  {% if block.state == "missing" %}
+  <p class="muted">Pas encore généré.</p>
+  {% else %}
+  {% if block.state == "ok" %}<h3>{{ block.article.title }}</h3>{% endif %}
+  {{ article_body(block.article, empty_text) }}
+  {% endif %}
+</article>
+{% endfor %}
+{% endblock %}

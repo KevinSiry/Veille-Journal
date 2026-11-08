@@ -1,0 +1,13 @@
+{% extends "base.html" %}
+{% block title %}Supprimer {{ theme.name }}{% endblock %}
+{% block content %}
+<article>
+  <h1>Supprimer le thème « {{ theme.name }} » ?</h1>
+  <p>Ses sources, éléments collectés et articles archivés seront définitivement supprimés.</p>
+  <form method="post" action="/themes/{{ theme.id }}/delete">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit">Oui, supprimer définitivement</button>
+  </form>
+  <p><a href="/themes/{{ theme.id }}">Annuler</a></p>
+</article>
+{% endblock %}
