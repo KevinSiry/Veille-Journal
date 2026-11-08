@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     # web
     web_host: str = "0.0.0.0"  # noqa: S104 - inside the container; host bind is 127.0.0.1
     web_port: int = 8080
+    # Trusted proxy IPs for X-Forwarded-For (the web port is bound to 127.0.0.1 by compose).
+    forwarded_allow_ips: str = "*"
 
     # misc
     log_level: str = "INFO"
