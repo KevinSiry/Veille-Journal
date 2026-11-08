@@ -17,7 +17,7 @@ from urllib.parse import urlsplit
 
 import httpx
 
-from veille.collect.canonical import resolve_short
+from veille.collect.canonical import host_key, resolve_short
 from veille.collect.net_safety import SafeHttp
 from veille.collect.text import html_to_text
 from veille.config import Settings
@@ -42,8 +42,7 @@ def parse_published(value: object) -> datetime | None:
 
 
 def host_name(url: str) -> str:
-    host = (urlsplit(url).hostname or "").lower()
-    return host[4:] if host.startswith("www.") else host
+    return host_key(url)
 
 
 def theme_queries(theme: Theme, limit: int) -> list[str]:
@@ -108,6 +107,9 @@ class SearxngCollector:
             "time_range": "day",
             "language": "all",
         }
+
+    def has_work(self, theme: Theme, sources: Sequence[Source]) -> bool:
+        return bool(theme_queries(theme, self._settings.max_keywords_queries))
 
     def collect(self, theme: Theme, sources: Sequence[Source]) -> list[RawItem]:
         """Run the theme queries sequentially.

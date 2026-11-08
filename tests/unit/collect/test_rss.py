@@ -124,7 +124,26 @@ def test_unexpected_error_is_logged(
         raise RuntimeError("bug")
 
     monkeypatch.setattr(http, "get", boom)
-    assert RssCollector(settings, http).collect(THEME, [source(1, RSS_URL)]) == []
+    with pytest.raises(CollectError, match="all 1 RSS feeds failed"):
+        RssCollector(settings, http).collect(THEME, [source(1, RSS_URL)])
+
+
+def test_no_active_source_means_no_work_not_failure(settings: Settings, http: SafeHttp) -> None:
+    collector = RssCollector(settings, http)
+    inactive = [source(1, RSS_URL, active=False)]
+    assert collector.collect(THEME, []) == []
+    assert collector.collect(THEME, inactive) == []
+    assert not collector.has_work(THEME, []) and not collector.has_work(THEME, inactive)
+    assert collector.has_work(THEME, [source(1, RSS_URL)])
+
+
+def test_every_feed_failing_raises(
+    settings: Settings, http: SafeHttp, feeds: respx.MockRouter
+) -> None:
+    feeds.get("https://gone.example/feed").respond(500)
+    sources = [source(1, "https://broken.example/feed"), source(2, "https://gone.example/feed")]
+    with pytest.raises(CollectError, match="all 2 RSS feeds failed"):
+        RssCollector(settings, http).collect(THEME, sources)
 
 
 def test_feed_title_fallback_to_host(

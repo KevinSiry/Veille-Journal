@@ -3,8 +3,17 @@ from __future__ import annotations
 import pytest
 import respx
 
-from veille.collect.canonical import SHORTENER_HOSTS, canonicalize, is_shortened, resolve_short
+from veille.collect.canonical import (
+    SHORTENER_HOSTS,
+    canonicalize,
+    host_key,
+    is_shortened,
+    resolve_short,
+    strip_www,
+)
 from veille.collect.net_safety import SafeHttp
+from veille.collect.rss import _host
+from veille.collect.searxng import host_name
 from veille.collect.text import html_to_text
 
 
@@ -48,6 +57,16 @@ def test_canonicalize_idempotent() -> None:
     url = "http://www.Example.com/a/?z=1&utm_campaign=c&a=2#f"
     once = canonicalize(url)
     assert canonicalize(once) == once
+
+
+def test_single_www_helper_shared() -> None:
+    assert strip_www("WWW.LeMonde.fr") == "lemonde.fr"
+    assert strip_www("wwwx.example") == "wwwx.example"
+    for fn in (host_key, host_name, _host):
+        assert fn("https://www.lemonde.fr/x") == "lemonde.fr"
+    assert host_key("not a url") == "" and host_key("http://[::1") == ""
+    assert _host("not a url") == "not a url"
+    assert canonicalize("https://WWW.LeMonde.fr/a") == "https://lemonde.fr/a"
 
 
 def test_shortener_hosts() -> None:

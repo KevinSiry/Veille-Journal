@@ -34,10 +34,22 @@ SHORTENER_HOSTS = frozenset(
 _DEFAULT_PORTS = {"http": 80, "https": 443}
 
 
+def strip_www(host: str) -> str:
+    """Lowercase ``host`` without a leading ``www.`` (shared by every host comparison)."""
+    host = host.lower()
+    return host[4:] if host.startswith("www.") else host
+
+
+def host_key(url: str) -> str:
+    """Lowercase host of ``url`` without ``www.``; '' when it has none or is unparsable."""
+    try:
+        return strip_www(urlsplit(url.strip()).hostname or "")
+    except ValueError:
+        return ""
+
+
 def _idna_host(host: str) -> str:
-    host = host.lower().rstrip(".")
-    if host.startswith("www."):
-        host = host[4:]
+    host = strip_www(host.lower().rstrip("."))
     if host.isascii():
         return host
     try:
@@ -83,13 +95,7 @@ def canonicalize(url: str) -> str:
 
 
 def is_shortened(url: str) -> bool:
-    try:
-        host = (urlsplit(url.strip()).hostname or "").lower()
-    except ValueError:
-        return False
-    if host.startswith("www."):
-        host = host[4:]
-    return host in SHORTENER_HOSTS
+    return host_key(url) in SHORTENER_HOSTS
 
 
 def resolve_short(url: str, http: SafeHttp) -> str:

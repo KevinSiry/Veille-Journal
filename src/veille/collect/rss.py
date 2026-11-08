@@ -12,7 +12,7 @@ from urllib.parse import urljoin, urlsplit
 
 import feedparser
 
-from veille.collect.canonical import resolve_short
+from veille.collect.canonical import host_key, resolve_short
 from veille.collect.net_safety import (
     FetchTimeoutError,
     HostNotFoundError,
@@ -81,8 +81,7 @@ def _entry_snippet(entry: Any) -> str:
 
 
 def _host(url: str) -> str:
-    host = (urlsplit(url).hostname or url).lower()
-    return host[4:] if host.startswith("www.") else host
+    return host_key(url) or url.lower()
 
 
 class RssCollector:
@@ -94,17 +93,32 @@ class RssCollector:
         self._settings = settings
         self._http = http
 
+    def has_work(self, theme: Theme, sources: Sequence[Source]) -> bool:
+        """False when the theme has no active feed: an empty result is then no signal."""
+        return any(source.active for source in sources)
+
     def collect(self, theme: Theme, sources: Sequence[Source]) -> list[RawItem]:
+        """Fetch every active feed; a bad feed is logged and skipped.
+
+        Raises CollectError when there was at least one active feed and all failed.
+        """
         items: list[RawItem] = []
+        attempted = 0
+        failures: list[str] = []
         for source in sources:
             if not source.active:
                 continue
+            attempted += 1
             try:
                 items.extend(self._collect_source(source))
             except VeilleError as exc:
                 logger.warning("theme %s: feed %s skipped: %s", theme.id, source.url, exc)
-            except Exception:
+                failures.append(f"{source.url}: {exc}")
+            except Exception as exc:
                 logger.exception("theme %s: unexpected error on feed %s", theme.id, source.url)
+                failures.append(f"{source.url}: {exc}")
+        if attempted and len(failures) == attempted:
+            raise CollectError(f"all {attempted} RSS feeds failed ({'; '.join(failures)})")
         return items
 
     def _collect_source(self, source: Source) -> list[RawItem]:

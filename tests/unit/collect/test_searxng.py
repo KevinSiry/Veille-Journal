@@ -127,6 +127,11 @@ def test_per_query_errors_tolerated(
     assert [i.url for i in items] == ["https://ok.example/1"]
 
 
+def test_has_work(collector: SearxngCollector) -> None:
+    assert collector.has_work(theme(), [])
+    assert not collector.has_work(theme(keywords=(), name=" "), [])
+
+
 def test_total_failure_raises(collector: SearxngCollector, mock_router: respx.MockRouter) -> None:
     mock_router.get(SEARCH).mock(side_effect=httpx.ConnectError("down"))
     with pytest.raises(CollectError):
