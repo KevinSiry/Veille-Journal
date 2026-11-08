@@ -14,7 +14,7 @@ def _settings(tmp_path: Path) -> Settings:
     return Settings(
         _env_file=None,  # type: ignore[call-arg]
         database_path=tmp_path / "v.db",
-        session_secret=SecretStr("k" * 40),
+        session_secret=SecretStr("wiring-T3st-s3cret-9f8e7d6c5b4a3210zyxw"),
         cookie_secure=False,
     )
 

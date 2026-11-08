@@ -56,7 +56,7 @@ def settings(tmp_path: Path) -> Settings:
         app_password_hash=SecretStr(
             PasswordHasher(time_cost=1, memory_cost=8, parallelism=1).hash(PASSWORD)
         ),
-        session_secret=SecretStr("x" * 48),
+        session_secret=SecretStr("e2e-T3st-s3cret-0a1b2c3d4e5f6789-qrstuvwxyz"),
         cookie_secure=False,
         searxng_url="http://searxng:8080",
         relevance_threshold=0.05,
