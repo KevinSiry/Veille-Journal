@@ -1,0 +1,31 @@
+{% extends "base.html" %}
+{% from "_macros.html" import pagination %}
+{% block title %}Recherche{% endblock %}
+{% block content %}
+<h1>Recherche</h1>
+<form method="get" action="/search" role="search">
+  <label for="q">Termes recherchés</label>
+  <input type="search" id="q" name="q" value="{{ q }}" maxlength="200">
+  <label for="theme-filter">Thème</label>
+  <select id="theme-filter" name="theme">
+    <option value="">Tous les thèmes</option>
+    {% for t in themes %}
+    <option value="{{ t.id }}"{% if t.id == theme_id %} selected{% endif %}>{{ t.name }}</option>
+    {% endfor %}
+  </select>
+  <button type="submit">Rechercher</button>
+</form>
+{% if q %}
+<p>{{ pager.total }} résultat{% if pager.total > 1 %}s{% endif %}.</p>
+{% for hit in hits %}
+<article>
+  <header>
+    <h2><a href="/archive/{{ hit.article.day.isoformat() }}?theme={{ hit.article.theme_id }}">{{ hit.article.title }}</a></h2>
+    <small class="muted">{{ hit.article.theme_name }} · {{ hit.article.day | fr_date }}</small>
+  </header>
+  <p class="snippet">{{ hit.snippet | highlight }}</p>
+</article>
+{% endfor %}
+{{ pagination(pager, "/search?" ~ ({"q": q} | urlencode) ~ "&" ~ ("theme=" ~ theme_id ~ "&" if theme_id is not none else "")) }}
+{% endif %}
+{% endblock %}

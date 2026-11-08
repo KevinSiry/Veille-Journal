@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta name="csrf-token" content="{{ csrf_token }}">
+  <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}'>
+  <title>{% block title %}Veille Journal{% endblock %} · Veille Journal</title>
+  <link rel="stylesheet" href="/static/pico.min.css">
+  <link rel="stylesheet" href="/static/app.css">
+  <script src="/static/htmx.min.js" defer></script>
+  <script src="/static/app.js" defer></script>
+</head>
+<body>
+  <header class="container">
+    <nav aria-label="Navigation principale">
+      <ul>
+        <li><strong><a href="/">Veille Journal</a></strong></li>
+      </ul>
+      {% if authenticated %}
+      <ul>
+        <li><a href="/"{% if path == "/" %} aria-current="page"{% endif %}>Aujourd'hui</a></li>
+        <li><a href="/archive"{% if path.startswith("/archive") %} aria-current="page"{% endif %}>Archives</a></li>
+        <li><a href="/search"{% if path == "/search" %} aria-current="page"{% endif %}>Recherche</a></li>
+        <li><a href="/themes"{% if path.startswith("/themes") %} aria-current="page"{% endif %}>Thèmes</a></li>
+        <li><a href="/admin/runs"{% if path.startswith("/admin") %} aria-current="page"{% endif %}>Exécutions</a></li>
+        <li>
+          <form method="post" action="/logout" class="inline-form">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <button type="submit" class="secondary outline">Déconnexion</button>
+          </form>
+        </li>
+      </ul>
+      {% endif %}
+    </nav>
+  </header>
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+  <footer class="container muted">
+    <small>Veille Journal · version {{ version }}</small>
+  </footer>
+</body>
+</html>

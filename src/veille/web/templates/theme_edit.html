@@ -1,0 +1,54 @@
+{% extends "base.html" %}
+{% block title %}{{ theme.name }}{% endblock %}
+{% block content %}
+<hgroup>
+  <h1>{{ theme.name }}</h1>
+  <p><a href="/themes">← Tous les thèmes</a></p>
+</hgroup>
+{% if request.query_params.get("saved") %}<p class="success" role="status">Modifications enregistrées.</p>{% endif %}
+<article>
+  <h2>Paramètres</h2>
+  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
+  <form method="post" action="/themes/{{ theme.id }}">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    {% include "_theme_fields.html" %}
+    <label for="active">
+      <input type="checkbox" role="switch" id="active" name="active" value="1"{% if form.active %} checked{% endif %}>
+      Thème actif
+    </label>
+    <button type="submit">Enregistrer</button>
+  </form>
+</article>
+<article id="sources">
+  <h2>Sources RSS épinglées</h2>
+  {% if sources %}
+  <ul>
+    {% for s in sources %}
+    <li>
+      <a href="{{ s.url }}" rel="noopener noreferrer nofollow" target="_blank">{{ s.label }}</a>
+      <small class="muted">{{ s.url }}</small>
+      <form method="post" action="/themes/{{ theme.id }}/sources/{{ s.id }}/delete" class="inline-form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="secondary outline" aria-label="Retirer la source {{ s.label }}">Retirer</button>
+      </form>
+    </li>
+    {% endfor %}
+  </ul>
+  {% else %}
+  <p class="muted">Aucune source épinglée.</p>
+  {% endif %}
+  {% if source_error %}<p class="error" role="alert">{{ source_error }}</p>{% endif %}
+  <form method="post" action="/themes/{{ theme.id }}/sources">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <label for="source-url">Adresse du flux RSS</label>
+    <input type="url" id="source-url" name="url" value="{{ source_form.url }}" maxlength="2000" required placeholder="https://exemple.fr/rss.xml">
+    <label for="source-label">Libellé <small class="muted">(facultatif, titre du flux par défaut)</small></label>
+    <input type="text" id="source-label" name="label" value="{{ source_form.label }}" maxlength="200">
+    <button type="submit">Ajouter la source</button>
+  </form>
+</article>
+<article>
+  <h2>Zone dangereuse</h2>
+  <p><a href="/themes/{{ theme.id }}/delete" role="button" class="secondary">Supprimer ce thème…</a></p>
+</article>
+{% endblock %}

@@ -1,0 +1,15 @@
+/* Minimal additions on top of Pico.css. */
+body > header nav ul:first-child strong a { text-decoration: none; }
+.day-nav { display: flex; justify-content: space-between; gap: 1rem; flex-wrap: wrap; }
+.muted { color: var(--pico-muted-color); }
+.inline-form { display: inline; margin: 0; }
+.inline-form button { margin: 0; padding: 0.25rem 0.75rem; width: auto; }
+.error { color: var(--pico-del-color); }
+.success { color: var(--pico-ins-color); }
+.article-body a { word-break: break-word; }
+.snippet mark { padding: 0 0.1em; }
+.table-wrap { overflow-x: auto; }
+.pagination { display: flex; justify-content: space-between; gap: 1rem; }
+.htmx-indicator { display: none; }
+.htmx-request .htmx-indicator, .htmx-request.htmx-indicator { display: inline; }
+footer.container { text-align: center; font-size: 0.85em; }

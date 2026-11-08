@@ -1,0 +1,35 @@
+{% macro theme_filter(action, themes, theme_id, extra=None) %}
+<form method="get" action="{{ action }}" role="search">
+  {% if extra %}{% for key, value in extra.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}{% endif %}
+  <label for="theme-filter">Thème</label>
+  <fieldset role="group">
+    <select id="theme-filter" name="theme">
+      <option value="">Tous les thèmes</option>
+      {% for t in themes %}
+      <option value="{{ t.id }}"{% if t.id == theme_id %} selected{% endif %}>{{ t.name }}</option>
+      {% endfor %}
+    </select>
+    <button type="submit">Filtrer</button>
+  </fieldset>
+</form>
+{% endmacro %}
+
+{% macro article_body(article, empty_text) %}
+{% if article.status == "ok" %}
+<div class="article-body">{{ article.body_md | markdown }}</div>
+{% elif article.status == "empty" %}
+<p class="muted">{{ empty_text }}</p>
+{% else %}
+<p class="error">La génération de cet article a échoué.</p>
+{% endif %}
+{% endmacro %}
+
+{% macro pagination(pager, base) %}
+{% if pager.count > 1 %}
+<nav class="pagination" aria-label="Pagination">
+  {% if pager.has_prev %}<a href="{{ base }}page={{ pager.number - 1 }}" rel="prev">← Page précédente</a>{% else %}<span></span>{% endif %}
+  <span class="muted">Page {{ pager.number }} / {{ pager.count }}</span>
+  {% if pager.has_next %}<a href="{{ base }}page={{ pager.number + 1 }}" rel="next">Page suivante →</a>{% else %}<span></span>{% endif %}
+</nav>
+{% endif %}
+{% endmacro %}
