@@ -1,11 +1,14 @@
-<div id="keywords-field">
-  <label for="keywords">Mots-clés <small class="muted">(séparés par des virgules)</small></label>
-  <textarea id="keywords" name="keywords" rows="3" aria-describedby="keywords-help">{{ keywords_value }}</textarea>
-  <small id="keywords-help">Vous pouvez les modifier librement après une suggestion.</small>
-  {% if suggest_error %}<p class="error" role="alert">{{ suggest_error }}</p>{% endif %}
-  <button type="button" class="secondary outline"
-          hx-post="/themes/suggest-keywords" hx-include="closest form"
-          hx-target="#keywords-field" hx-swap="outerHTML">
-    Suggérer des mots-clés <span class="htmx-indicator" aria-hidden="true">…</span>
-  </button>
+{% from "_macros.html" import icon, alert %}
+<div id="keywords-field" class="field">
+  <label for="keywords">Mots-clés <span class="label-hint">(séparés par des virgules)</span></label>
+  <textarea id="keywords" name="keywords" rows="3" aria-describedby="keywords-help" class="textarea">{{ keywords_value }}</textarea>
+  <p id="keywords-help" class="hint">Vous pouvez les modifier librement après une suggestion.</p>
+  {% if suggest_error %}{{ alert(suggest_error) }}{% endif %}
+  <div>
+    <button type="button" class="btn btn--secondary btn--sm"
+            hx-post="/themes/suggest-keywords" hx-include="closest form"
+            hx-target="#keywords-field" hx-swap="outerHTML">
+      {{ icon("sparkles") }}Suggérer des mots-clés <span class="htmx-indicator" aria-hidden="true"><span class="spinner"></span></span>
+    </button>
+  </div>
 </div>

@@ -21,7 +21,7 @@ browser ──▶ web (FastAPI, Jinja2, HTMX) ──▶ SQLite (WAL + FTS5) ◀�
 | `veille.collect` | `RssCollector` (feedparser), `SearxngCollector`, `TrafilaturaExtractor`, `canonicalize`, `net_safety` (SSRF guard + per-host rate limit + DNS-pinned transport). |
 | `veille.llm` | `OllamaClient` (`/api/chat` with JSON schema `format`, `think: false`; `/api/embed`), one call in flight per process; `FakeLLM` for tests. |
 | `veille.pipeline` | `prepare` → `relevance` (stage 1 keywords / pinned source, stage 2 embeddings) → `dedupe` (title-embedding clusters, top N) → `summarize` (1 call per cluster, 1 retry) → `render` (deterministic Markdown, links only from the DB) → `run` (per-theme isolation, run lock, stats). |
-| `veille.web` | Pages, auth (argon2id + signed session cookie), CSRF, security headers, login rate limit. Pico.css and HTMX are vendored in `static/`. |
+| `veille.web` | Pages, auth (argon2id + signed session cookie), CSRF, security headers, login rate limit. HTMX, the Inter and Newsreader fonts (OFL) and a self-contained design system (`app.css`, `icons.svg`) are vendored in `static/`. |
 | `veille.cli`, `veille.wiring`, `veille.scheduler`, `veille.doctor` | Composition root and commands. |
 
 ## Key decisions

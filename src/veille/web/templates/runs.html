@@ -1,37 +1,48 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon, page_head, run_status, alert, empty %}
 {% block title %}Exécutions{% endblock %}
 {% block content %}
-<h1>Exécutions</h1>
+{{ page_head("Exécutions", "Les 20 derniers passages du pipeline nocturne : collecte, sélection et rédaction par thème.") }}
 {% if not entries %}
-<p class="muted">Aucune exécution enregistrée.</p>
+{{ empty("Aucune exécution enregistrée", "Le premier passage aura lieu à l'heure planifiée, ou lancez-le en ligne de commande.", "runs") }}
 {% endif %}
+<div class="stack">
 {% for entry in entries %}
 {% set run = entry.run %}
-<article>
+<article class="card run" aria-labelledby="run-{{ run.id }}">
   <header>
-    <h2>Exécution n° {{ run.id }} — {{ run.status }}</h2>
-    <small class="muted">Déclenchement : {{ run.trigger }} · début {{ run.started_at | fr_datetime }} · fin {{ run.finished_at | fr_datetime }}</small>
+    <div class="run__head">
+      <div class="run__title">
+        <h2 id="run-{{ run.id }}">Exécution n° {{ run.id }}</h2>
+        {{ run_status(run.status) }}
+      </div>
+      <span class="chip">{% if run.trigger == "cron" %}Planifiée{% elif run.trigger == "cli" %}Manuelle{% else %}{{ run.trigger }}{% endif %}</span>
+    </div>
+    <dl class="run__facts">
+      <div><dt>Début</dt><dd>{{ run.started_at | fr_datetime }}</dd></div>
+      <div><dt>Fin</dt><dd>{{ run.finished_at | fr_datetime }}</dd></div>
+    </dl>
   </header>
-  {% if run.error %}<p class="error">{{ run.error }}</p>{% endif %}
+  {% if run.error %}{{ alert(run.error) }}{% endif %}
   {% if entry.themes %}
   <div class="table-wrap">
-  <table>
+  <table class="table">
     <thead>
       <tr>
-        <th scope="col">Thème</th><th scope="col">État</th><th scope="col">Collectés</th>
-        <th scope="col">Nouveaux</th><th scope="col">Groupes</th><th scope="col">Retenus</th>
-        <th scope="col">Écartés</th><th scope="col">Appels LLM</th><th scope="col">Jetons (est.)</th>
-        <th scope="col">Durée (s)</th>
+        <th scope="col">Thème</th><th scope="col">État</th><th scope="col" class="num">Collectés</th>
+        <th scope="col" class="num">Nouveaux</th><th scope="col" class="num">Groupes</th><th scope="col" class="num">Retenus</th>
+        <th scope="col" class="num">Écartés</th><th scope="col" class="num">Appels LLM</th><th scope="col" class="num">Jetons (est.)</th>
+        <th scope="col" class="num">Durée (s)</th>
       </tr>
     </thead>
     <tbody>
       {% for row in entry.themes %}
       <tr>
-        <td>{{ row.theme_name }}</td>
-        <td>{{ row.status }}{% if row.error %} <small class="error">{{ row.error }}</small>{% endif %}</td>
-        <td>{{ row.collected }}</td><td>{{ row.new }}</td><td>{{ row.clusters }}</td>
-        <td>{{ row.kept }}</td><td>{{ row.dropped }}</td><td>{{ row.llm_calls }}</td>
-        <td>{{ row.tokens_estimated }}</td><td>{{ "%.1f" | format(row.duration_s) }}</td>
+        <th scope="row">{{ row.theme_name }}</th>
+        <td class="error-cell">{{ run_status(row.status) }}{% if row.error %} <small>{{ row.error }}</small>{% endif %}</td>
+        <td class="num">{{ row.collected }}</td><td class="num">{{ row.new }}</td><td class="num">{{ row.clusters }}</td>
+        <td class="num">{{ row.kept }}</td><td class="num">{{ row.dropped }}</td><td class="num">{{ row.llm_calls }}</td>
+        <td class="num">{{ "{:,}".format(row.tokens_estimated) | replace(",", " ") }}</td><td class="num">{{ "%.1f" | format(row.duration_s) }}</td>
       </tr>
       {% endfor %}
     </tbody>
@@ -40,4 +51,5 @@
   {% endif %}
 </article>
 {% endfor %}
+</div>
 {% endblock %}

@@ -1,19 +1,23 @@
 {% extends "base.html" %}
-{% from "_macros.html" import theme_filter, article_body %}
+{% from "_macros.html" import icon, theme_filter, article_body, article_badge, page_head, empty %}
 {% block title %}{{ day | fr_date }}{% endblock %}
 {% block content %}
-<hgroup>
-  <h1>{{ day | fr_date }}</h1>
-  <p><a href="/archive">← Toutes les archives</a></p>
-</hgroup>
+{{ page_head(day | fr_date, eyebrow="Édition archivée", back="/archive", back_label="Toutes les archives") }}
 {{ theme_filter("/archive/" ~ day.isoformat(), themes, theme_id) }}
+<div class="stack reading">
 {% for article in articles %}
-<article>
-  <header><h2>{{ article.theme_name }}</h2></header>
-  {% if article.status == "ok" %}<h3>{{ article.title }}</h3>{% endif %}
-  {{ article_body(article, empty_text) }}
-</article>
+  <article class="card story" id="theme-{{ article.theme_id }}">
+    <header class="story__head">
+      <div class="story__titles">
+        <h2 class="story__theme">{{ article.theme_name }}</h2>
+        {% if article.status == "ok" and not article.title.startswith(article.theme_name) %}<h3 class="story__dek">{{ article.title }}</h3>{% endif %}
+      </div>
+      {{ article_badge(article) }}
+    </header>
+    {{ article_body(article, empty_text) }}
+  </article>
 {% else %}
-<p class="muted">Aucun article ce jour-là.</p>
+  {{ empty("Aucun article ce jour-là", "Essayez un autre thème ou revenez aux archives.", "archive", "/archive", "Voir les archives") }}
 {% endfor %}
+</div>
 {% endblock %}

@@ -1,31 +1,40 @@
 {% extends "base.html" %}
-{% from "_macros.html" import pagination %}
+{% from "_macros.html" import icon, pagination, page_head, theme_options, empty %}
 {% block title %}Recherche{% endblock %}
 {% block content %}
-<h1>Recherche</h1>
-<form method="get" action="/search" role="search">
-  <label for="q">Termes recherchés</label>
-  <input type="search" id="q" name="q" value="{{ q }}" maxlength="200">
-  <label for="theme-filter">Thème</label>
-  <select id="theme-filter" name="theme">
-    <option value="">Tous les thèmes</option>
-    {% for t in themes %}
-    <option value="{{ t.id }}"{% if t.id == theme_id %} selected{% endif %}>{{ t.name }}</option>
-    {% endfor %}
-  </select>
-  <button type="submit">Rechercher</button>
+{{ page_head("Recherche", "Retrouvez une actualité dans toutes les éditions archivées.") }}
+<form method="get" action="/search" role="search" class="toolbar toolbar--search">
+  <div class="field field--grow">
+    <label for="q">Termes recherchés</label>
+    <div class="input-icon">
+      {{ icon("search") }}
+      <input type="search" id="q" name="q" value="{{ q }}" maxlength="200" class="input input--lg" placeholder="Ex. : nucléaire, élection, IA générative…"{% if not q %} autofocus{% endif %}>
+    </div>
+  </div>
+  <div class="field">
+    <label for="theme-filter">Thème</label>
+    <select id="theme-filter" name="theme" class="select input--lg">
+      {{ theme_options(themes, theme_id) }}
+    </select>
+  </div>
+  <button type="submit" class="btn btn--lg">Rechercher</button>
 </form>
 {% if q %}
-<p>{{ pager.total }} résultat{% if pager.total > 1 %}s{% endif %}.</p>
-{% for hit in hits %}
-<article>
-  <header>
+{% if hits %}
+<p class="results-meta" role="status">{{ pager.total }} résultat{% if pager.total > 1 %}s{% endif %} pour « {{ q }} ».</p>
+<div class="results">
+  {% for hit in hits %}
+  <article class="result">
+    <p class="result__meta"><span class="chip">{{ hit.article.theme_name }}</span><span>{{ hit.article.day | fr_date }}</span></p>
     <h2><a href="/archive/{{ hit.article.day.isoformat() }}?theme={{ hit.article.theme_id }}">{{ hit.article.title }}</a></h2>
-    <small class="muted">{{ hit.article.theme_name }} · {{ hit.article.day | fr_date }}</small>
-  </header>
-  <p class="snippet">{{ hit.snippet | highlight }}</p>
-</article>
-{% endfor %}
+    <p class="snippet">{{ hit.snippet | highlight }}</p>
+  </article>
+  {% endfor %}
+</div>
+{% else %}
+<p class="visually-hidden" role="status">{{ pager.total }} résultat.</p>
+{{ empty("Aucun résultat", "Aucun article ne contient « " ~ q ~ " ». Essayez un terme plus court ou un autre thème.", "search") }}
+{% endif %}
 {{ pagination(pager, "/search?" ~ ({"q": q} | urlencode) ~ "&" ~ ("theme=" ~ theme_id ~ "&" if theme_id is not none else "")) }}
 {% endif %}
 {% endblock %}

@@ -210,7 +210,7 @@ def test_suggest_keywords_success(auth_client: TestClient, env: Env) -> None:
     html = _suggest(client, name="Énergie", description="Transition", keywords="manuel")
     assert env.llm.calls[0][0] == KEYWORDS_SYSTEM
     assert "Nom du thème : Énergie" in env.llm.calls[0][1]
-    assert '<div id="keywords-field">' in html
+    assert '<div id="keywords-field"' in html
     assert "<html" not in html  # a fragment, not a page
     value = html.split('name="keywords"')[1].split(">", 1)[1].split("</textarea>")[0]
     keywords = value.split(", ")

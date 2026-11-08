@@ -34,11 +34,11 @@ def test_runs_page(auth_client: TestClient, env: Env) -> None:
     assert "Aucune exécution" in auth_client.get("/admin/runs").text
     _add_runs(env, 25)
     html = auth_client.get("/admin/runs").text
-    assert html.count("<h2>Exécution n°") == 20
+    assert html.count(">Exécution n° ") == 20
     assert "Exécution n° 25" in html
     assert "Exécution n° 5 " not in html
     assert "Thème &lt;24&gt;" in html
-    assert "<td>12</td>" in html
+    assert ">12</td>" in html
     assert "4.2" in html or "4.3" in html
     assert "Ollama KO" in html
     assert "08/11/2026 05:30" not in html  # oldest runs are not shown
@@ -48,8 +48,8 @@ def test_runs_page(auth_client: TestClient, env: Env) -> None:
 def test_running_run_and_odd_stats(auth_client: TestClient, env: Env) -> None:
     env.store.start_run(RunTrigger.CLI, START)
     html = auth_client.get("/admin/runs").text
-    assert "running" in html
-    assert "fin —" in html
+    assert "En cours" in html
+    assert "<dt>Fin</dt><dd>—</dd>" in html
     assert _theme_rows({"themes": "x"}) == []
     rows = _theme_rows({"themes": [1, {"theme_id": 3, "collected": "bad"}]})
     assert rows == [

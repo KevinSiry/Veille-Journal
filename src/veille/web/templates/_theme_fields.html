@@ -1,5 +1,10 @@
-<label for="name">Nom</label>
-<input type="text" id="name" name="name" value="{{ form.name }}" maxlength="100" required>
-<label for="description">Description</label>
-<textarea id="description" name="description" rows="3" maxlength="2000">{{ form.description }}</textarea>
+<div class="field">
+  <label for="name">Nom</label>
+  <input type="text" id="name" name="name" value="{{ form.name }}" maxlength="100" required class="input" placeholder="Ex. : Transition énergétique">
+</div>
+<div class="field">
+  <label for="description">Description <span class="label-hint">(facultatif)</span></label>
+  <textarea id="description" name="description" rows="3" maxlength="2000" class="textarea" aria-describedby="description-help">{{ form.description }}</textarea>
+  <p id="description-help" class="hint">Précisez le périmètre : elle guide la sélection et les résumés.</p>
+</div>
 {% with keywords_value=form.keywords, suggest_error=None %}{% include "_keywords_field.html" %}{% endwith %}

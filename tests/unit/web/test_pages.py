@@ -58,7 +58,7 @@ def test_day_navigation(auth_client: TestClient, env: Env) -> None:
     assert "Journal du jour" in html
     assert 'href="/?day=2026-11-03"' in html
     assert 'href="/?day=2026-11-08"' in html
-    assert '<a href="/">Aujourd' in html
+    assert 'href="/" class="btn btn--ghost btn--sm">Aujourd' in html
     html = auth_client.get("/").text
     assert 'href="/?day=2026-11-06"' in html
     assert 'rel="next"' not in html
@@ -84,15 +84,15 @@ def test_archive_pagination_and_filter(auth_client: TestClient, env: Env) -> Non
         env.store.add_article(a, TODAY - timedelta(days=offset))
     env.store.add_article(b, date(2020, 1, 1))
     page1 = auth_client.get("/archive").text
-    assert page1.count('<li><a href="/archive/') == 30
-    assert "Page 1 / 2" in page1
+    assert page1.count('<a class="day-tile" href="/archive/') == 30
+    assert "Page 1 sur 2" in page1
     assert 'href="/archive?page=2"' in page1
     page2 = auth_client.get("/archive?page=2").text
-    assert page2.count('<li><a href="/archive/') == 6
+    assert page2.count('<a class="day-tile" href="/archive/') == 6
     assert "1 janvier 2020" in page2
     assert 'href="/archive?page=1"' in page2
     filtered = auth_client.get(f"/archive?theme={b.id}").text
-    assert filtered.count('<li><a href="/archive/') == 1
+    assert filtered.count('<a class="day-tile" href="/archive/') == 1
     assert f'href="/archive/2020-01-01?theme={b.id}"' in filtered
     assert "Page 1" not in filtered
     # bad values are ignored
@@ -101,7 +101,7 @@ def test_archive_pagination_and_filter(auth_client: TestClient, env: Env) -> Non
 
 
 def test_archive_empty(auth_client: TestClient) -> None:
-    assert "Aucun article archivé." in auth_client.get("/archive").text
+    assert "Aucun article archivé" in auth_client.get("/archive").text
 
 
 def test_archive_day(auth_client: TestClient, env: Env) -> None:
@@ -115,7 +115,7 @@ def test_archive_day(auth_client: TestClient, env: Env) -> None:
     html = auth_client.get(f"/archive/2026-11-08?theme={a.id}").text
     assert "Article A" in html
     assert "Rien de notable" not in html
-    assert "Aucun article ce jour-là." in auth_client.get("/archive/2001-01-01").text
+    assert "Aucun article ce jour-là" in auth_client.get("/archive/2001-01-01").text
 
 
 def test_search_highlight_and_escaping(auth_client: TestClient, env: Env) -> None:
@@ -126,7 +126,7 @@ def test_search_highlight_and_escaping(auth_client: TestClient, env: Env) -> Non
     assert "&lt;script&gt;alert(1)&lt;/script&gt;" in html
     assert "<mark>nucl</mark>éaire" in html
     assert "<b>Th</b>" not in html
-    assert "1 résultat." in html
+    assert "1 résultat pour" in html
 
 
 def test_search_marker_inside_markup_is_escaped(auth_client: TestClient, env: Env) -> None:
@@ -144,13 +144,13 @@ def test_search_pagination_theme_and_order(auth_client: TestClient, env: Env) ->
         env.store.add_article(a, TODAY - timedelta(days=offset), title=f"Sujet {offset:02d}")
     env.store.add_article(b, TODAY, title="Sujet beta")
     html = auth_client.get("/search?q=sujet").text
-    assert "26 résultats." in html
+    assert "26 résultats pour" in html
     assert html.count('<p class="snippet">') == 20
     assert "q=sujet&amp;page=2" in html
     page2 = auth_client.get("/search?q=sujet&page=2").text
     assert page2.count('<p class="snippet">') == 6
     filtered = auth_client.get(f"/search?q=sujet&theme={b.id}").text
-    assert "1 résultat." in filtered
+    assert "1 résultat pour" in filtered
     assert "Sujet beta" in filtered
     # results are shown in store order
     first = auth_client.get(f"/search?q=sujet&theme={a.id}").text

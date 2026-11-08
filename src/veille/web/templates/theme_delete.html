@@ -1,13 +1,19 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon %}
 {% block title %}Supprimer {{ theme.name }}{% endblock %}
 {% block content %}
-<article>
-  <h1>Supprimer le thème « {{ theme.name }} » ?</h1>
+<section class="card card--danger reading" aria-labelledby="delete-title">
+  <div class="card__head">
+    <p class="eyebrow error">{{ icon("alert") }}Action irréversible</p>
+    <h1 id="delete-title" class="serif">Supprimer le thème « {{ theme.name }} » ?</h1>
+  </div>
   <p>Ses sources, éléments collectés et articles archivés seront définitivement supprimés.</p>
-  <form method="post" action="/themes/{{ theme.id }}/delete">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <button type="submit">Oui, supprimer définitivement</button>
-  </form>
-  <p><a href="/themes/{{ theme.id }}">Annuler</a></p>
-</article>
+  <div class="card__foot">
+    <a href="/themes/{{ theme.id }}" class="btn btn--secondary">Annuler</a>
+    <form method="post" action="/themes/{{ theme.id }}/delete" class="inline-form">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn--danger">{{ icon("trash") }}Oui, supprimer définitivement</button>
+    </form>
+  </div>
+</section>
 {% endblock %}

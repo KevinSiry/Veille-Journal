@@ -1,18 +1,28 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon, alert %}
 {% block title %}Connexion{% endblock %}
-{% block content %}
-<article>
-  <h1>Connexion</h1>
-  {% if not configured %}
-  <p class="error" role="alert">L'application n'est pas configurée : aucun mot de passe n'est défini (variable APP_PASSWORD_HASH). La connexion est impossible.</p>
-  {% else %}
-  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
-  <form method="post" action="/login">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    <label for="password">Mot de passe</label>
-    <input type="password" id="password" name="password" autocomplete="current-password" required autofocus>
-    <button type="submit">Se connecter</button>
-  </form>
-  {% endif %}
-</article>
+{% block chrome %}
+<main id="main" class="auth">
+  <div class="auth__card">
+    <div class="auth__brand">
+      <span class="brand__mark" aria-hidden="true">V</span>
+      <h1>Connexion</h1>
+      <p>Veille Journal, votre revue de presse quotidienne.</p>
+    </div>
+    {% if not configured %}
+    {{ alert("L'application n'est pas configurée : aucun mot de passe n'est défini (variable APP_PASSWORD_HASH). La connexion est impossible.") }}
+    {% else %}
+    <form method="post" action="/login" class="form">
+      {% if error %}{{ alert(error) }}{% endif %}
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <div class="field">
+        <label for="password">Mot de passe</label>
+        <input type="password" id="password" name="password" autocomplete="current-password" required autofocus class="input input--lg">
+      </div>
+      <button type="submit" class="btn btn--block btn--lg">{{ icon("lock") }}Se connecter</button>
+    </form>
+    {% endif %}
+    <p class="auth__foot">Version {{ version }}</p>
+  </div>
+</main>
 {% endblock %}

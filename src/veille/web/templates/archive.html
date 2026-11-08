@@ -1,17 +1,25 @@
 {% extends "base.html" %}
-{% from "_macros.html" import theme_filter, pagination %}
+{% from "_macros.html" import theme_filter, pagination, page_head, empty %}
 {% block title %}Archives{% endblock %}
 {% block content %}
-<h1>Archives</h1>
+{{ page_head("Archives", "Toutes les éditions passées, jour par jour.") }}
 {{ theme_filter("/archive", themes, theme_id) }}
 {% if days %}
-<ul>
-  {% for d in days %}
-  <li><a href="/archive/{{ d.isoformat() }}{% if theme_id is not none %}?theme={{ theme_id }}{% endif %}">{{ d | fr_date }}</a></li>
-  {% endfor %}
-</ul>
+{% for month_days in days | group_by_month %}
+<section class="month" aria-labelledby="month-{{ month_days[0].isoformat()[:7] }}">
+  <h2 class="month__title" id="month-{{ month_days[0].isoformat()[:7] }}">{{ month_days[0] | fr_month_year }} <small>{{ month_days | length }} édition{% if month_days | length > 1 %}s{% endif %}</small></h2>
+  <ul class="days">
+    {% for d in month_days %}
+    <li><a class="day-tile" href="/archive/{{ d.isoformat() }}{% if theme_id is not none %}?theme={{ theme_id }}{% endif %}" aria-label="{{ d | fr_date }}">
+      <span class="day-tile__weekday">{{ d | fr_weekday }}</span>
+      <span class="day-tile__num">{{ d.day }}</span>
+    </a></li>
+    {% endfor %}
+  </ul>
+</section>
+{% endfor %}
 {% else %}
-<p class="muted">Aucun article archivé.</p>
+{{ empty("Aucun article archivé", "Les éditions apparaîtront ici après la première génération nocturne.", "archive") }}
 {% endif %}
 {{ pagination(pager, "/archive?" ~ ("theme=" ~ theme_id ~ "&" if theme_id is not none else "")) }}
 {% endblock %}

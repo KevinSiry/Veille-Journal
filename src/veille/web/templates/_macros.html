@@ -1,16 +1,49 @@
+{% macro icon(name, label=None) -%}
+<svg class="icon"{% if label %} role="img" aria-label="{{ label }}"{% else %} aria-hidden="true"{% endif %} focusable="false"><use href="/static/icons.svg#{{ name }}"></use></svg>
+{%- endmacro %}
+
+{% macro page_head(title, lead=None, eyebrow=None, back=None, back_label=None) %}
+<header class="page-head">
+  <div class="page-head__text">
+    {% if back %}<a class="back-link" href="{{ back }}">{{ icon("arrow-left") }}{{ back_label }}</a>{% endif %}
+    {% if eyebrow %}<p class="eyebrow">{{ eyebrow }}</p>{% endif %}
+    <h1>{{ title }}</h1>
+    {% if lead %}<p class="page-head__lead">{{ lead }}</p>{% endif %}
+  </div>
+  {% if caller is defined %}<div class="page-head__actions">{{ caller() }}</div>{% endif %}
+</header>
+{% endmacro %}
+
+{% macro alert(message, kind="error") %}
+<p class="alert alert--{{ kind }}" role="{{ 'alert' if kind == 'error' else 'status' }}">{{ icon("alert" if kind == "error" else "check") }}<span>{{ message }}</span></p>
+{% endmacro %}
+
+{% macro empty(title, text=None, icon_name="inbox", href=None, action=None) %}
+<div class="empty">
+  <span class="empty__icon">{{ icon(icon_name) }}</span>
+  <h2>{{ title }}</h2>
+  {% if text %}<p>{{ text }}</p>{% endif %}
+  {% if href %}<a class="btn btn--secondary" href="{{ href }}">{{ action }}</a>{% endif %}
+</div>
+{% endmacro %}
+
+{% macro theme_options(themes, theme_id) %}
+<option value="">Tous les thèmes</option>
+{% for t in themes %}
+<option value="{{ t.id }}"{% if t.id == theme_id %} selected{% endif %}>{{ t.name }}</option>
+{% endfor %}
+{% endmacro %}
+
 {% macro theme_filter(action, themes, theme_id, extra=None) %}
-<form method="get" action="{{ action }}" role="search">
+<form method="get" action="{{ action }}" role="search" class="toolbar">
   {% if extra %}{% for key, value in extra.items() %}<input type="hidden" name="{{ key }}" value="{{ value }}">{% endfor %}{% endif %}
-  <label for="theme-filter">Thème</label>
-  <fieldset role="group">
-    <select id="theme-filter" name="theme">
-      <option value="">Tous les thèmes</option>
-      {% for t in themes %}
-      <option value="{{ t.id }}"{% if t.id == theme_id %} selected{% endif %}>{{ t.name }}</option>
-      {% endfor %}
+  <div class="field">
+    <label for="theme-filter">Thème</label>
+    <select id="theme-filter" name="theme" class="select">
+      {{ theme_options(themes, theme_id) }}
     </select>
-    <button type="submit">Filtrer</button>
-  </fieldset>
+  </div>
+  <button type="submit" class="btn btn--secondary">Filtrer</button>
 </form>
 {% endmacro %}
 
@@ -18,18 +51,30 @@
 {% if article.status == "ok" %}
 <div class="article-body">{{ article.body_md | markdown }}</div>
 {% elif article.status == "empty" %}
-<p class="muted">{{ empty_text }}</p>
+<p class="article-empty">{{ empty_text }}</p>
 {% else %}
-<p class="error">La génération de cet article a échoué.</p>
+{{ alert("La génération de cet article a échoué.") }}
 {% endif %}
+{% endmacro %}
+
+{% macro article_badge(article) %}
+{% if article.status == "ok" %}<span class="badge badge--info badge--plain">{{ article.entry_count }} actualité{% if article.entry_count > 1 %}s{% endif %}</span>
+{% elif article.status == "empty" %}<span class="badge">Rien de notable</span>
+{% else %}<span class="badge badge--error">Échec</span>{% endif %}
 {% endmacro %}
 
 {% macro pagination(pager, base) %}
 {% if pager.count > 1 %}
 <nav class="pagination" aria-label="Pagination">
-  {% if pager.has_prev %}<a href="{{ base }}page={{ pager.number - 1 }}" rel="prev">← Page précédente</a>{% else %}<span></span>{% endif %}
-  <span class="muted">Page {{ pager.number }} / {{ pager.count }}</span>
-  {% if pager.has_next %}<a href="{{ base }}page={{ pager.number + 1 }}" rel="next">Page suivante →</a>{% else %}<span></span>{% endif %}
+  {% if pager.has_prev %}<a class="btn btn--secondary btn--sm" href="{{ base }}page={{ pager.number - 1 }}" rel="prev">{{ icon("chevron-left") }}Précédente</a>{% else %}<span></span>{% endif %}
+  <span class="pagination__status">Page {{ pager.number }} sur {{ pager.count }}</span>
+  {% if pager.has_next %}<a class="btn btn--secondary btn--sm" href="{{ base }}page={{ pager.number + 1 }}" rel="next">Suivante{{ icon("chevron-right") }}</a>{% else %}<span></span>{% endif %}
 </nav>
 {% endif %}
+{% endmacro %}
+
+{% macro run_status(status) %}
+{% set labels = {"ok": ("Réussie", "ok"), "partial": ("Partielle", "warn"), "error": ("Échec", "error"), "running": ("En cours", "info badge--running"), "skipped": ("Ignoré", ""), "empty": ("Rien de notable", "")} %}
+{% set item = labels.get(status, (status, "")) %}
+<span class="badge{% if item[1] %} badge--{{ item[1] }}{% endif %}">{{ item[0] }}</span>
 {% endmacro %}

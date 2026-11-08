@@ -1,45 +1,60 @@
+{% from "_macros.html" import icon %}
 <!doctype html>
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="color-scheme" content="light dark">
+  <meta name="theme-color" content="#f6f6f3" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0e0f11" media="(prefers-color-scheme: dark)">
   <meta name="csrf-token" content="{{ csrf_token }}">
   <meta name="htmx-config" content='{"includeIndicatorStyles": false, "allowEval": false, "allowScriptTags": false}'>
   <title>{% block title %}Veille Journal{% endblock %} · Veille Journal</title>
-  <link rel="stylesheet" href="/static/pico.min.css">
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="preload" href="/static/fonts/inter-latin-wght-normal.woff2" as="font" type="font/woff2" crossorigin>
   <link rel="stylesheet" href="/static/app.css">
   <script src="/static/htmx.min.js" defer></script>
   <script src="/static/app.js" defer></script>
 </head>
-<body>
-  <header class="container">
-    <nav aria-label="Navigation principale">
-      <ul>
-        <li><strong><a href="/">Veille Journal</a></strong></li>
-      </ul>
+<body{% if authenticated %} class="has-tabbar"{% endif %}>
+  <a class="skip-link" href="#main">Aller au contenu</a>
+  {% block chrome %}
+  <header class="topbar">
+    <div class="topbar__inner shell">
+      <a class="brand" href="/" aria-label="Veille Journal, accueil">
+        <span class="brand__mark" aria-hidden="true">V</span>
+        <span class="brand__name">Veille <span>Journal</span></span>
+      </a>
       {% if authenticated %}
-      <ul>
-        <li><a href="/"{% if path == "/" %} aria-current="page"{% endif %}>Aujourd'hui</a></li>
-        <li><a href="/archive"{% if path.startswith("/archive") %} aria-current="page"{% endif %}>Archives</a></li>
-        <li><a href="/search"{% if path == "/search" %} aria-current="page"{% endif %}>Recherche</a></li>
-        <li><a href="/themes"{% if path.startswith("/themes") %} aria-current="page"{% endif %}>Thèmes</a></li>
-        <li><a href="/admin/runs"{% if path.startswith("/admin") %} aria-current="page"{% endif %}>Exécutions</a></li>
-        <li>
-          <form method="post" action="/logout" class="inline-form">
-            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-            <button type="submit" class="secondary outline">Déconnexion</button>
-          </form>
-        </li>
-      </ul>
+      <nav class="mainnav" aria-label="Navigation principale">
+        <ul>
+          {% for href, label, name, active in [
+            ("/", "Aujourd'hui", "today", path == "/"),
+            ("/archive", "Archives", "archive", path.startswith("/archive")),
+            ("/search", "Recherche", "search", path == "/search"),
+            ("/themes", "Thèmes", "themes", path.startswith("/themes")),
+            ("/admin/runs", "Exécutions", "runs", path.startswith("/admin")),
+          ] %}
+          <li><a href="{{ href }}"{% if active %} aria-current="page"{% endif %}>{{ icon(name) }}<span>{{ label }}</span></a></li>
+          {% endfor %}
+        </ul>
+      </nav>
+      <form method="post" action="/logout" class="logout">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        <button type="submit" class="btn btn--ghost btn--sm" aria-label="Se déconnecter">{{ icon("logout") }}<span class="btn__label">Déconnexion</span></button>
+      </form>
       {% endif %}
-    </nav>
+    </div>
   </header>
-  <main class="container">
+  <main id="main" class="main shell">
     {% block content %}{% endblock %}
   </main>
-  <footer class="container muted">
-    <small>Veille Journal · version {{ version }}</small>
+  <footer class="footer">
+    <div class="footer__inner shell">
+      <span>Veille Journal · version {{ version }}</span>
+      <span>Résumés générés localement, chaque nuit.</span>
+    </div>
   </footer>
+  {% endblock %}
 </body>
 </html>

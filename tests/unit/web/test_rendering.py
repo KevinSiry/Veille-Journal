@@ -58,3 +58,31 @@ def test_highlight_escapes_first() -> None:
 
 def test_fr_date() -> None:
     assert fr_date(date(2026, 8, 15)) == "samedi 15 août 2026"
+
+
+def test_generated_entries_get_presentation_hooks() -> None:
+    from veille.web.rendering import render_markdown
+
+    html = str(
+        render_markdown(
+            "## T\n\n- **Titre <b>** — Résumé (x) ([Le Monde](https://a.fr/1) · [AFP](https://b.fr))\n"
+            "- **Seul** — Sans source\n"
+        )
+    )
+    assert '<strong class="entry-title">Titre &lt;b&gt;</strong> Résumé (x)' in html
+    assert '<span class="entry-sources"><a href="https://a.fr/1"' in html
+    assert '</a><a href="https://b.fr"' in html and " · " not in html
+    assert '<strong class="entry-title">Seul</strong> Sans source</li>' in html
+    assert "<b>" not in html
+
+
+def test_group_by_month_and_french_parts() -> None:
+    from datetime import date
+
+    from veille.web.rendering import fr_month_year, fr_weekday, group_by_month
+
+    days = [date(2026, 11, 8), date(2026, 11, 2), date(2026, 10, 31), date(2025, 11, 30)]
+    assert group_by_month(days) == [days[:2], [days[2]], [days[3]]]
+    assert group_by_month([]) == []
+    assert fr_weekday(date(2026, 11, 8)) == "dimanche"
+    assert fr_month_year(date(2026, 8, 1)) == "août 2026"

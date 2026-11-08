@@ -36,7 +36,8 @@ def test_pages_use_no_inline_script_or_style(auth_client: TestClient, env: Env) 
 
 
 def test_vendored_assets_keep_license_headers(client: TestClient) -> None:
-    assert "Licensed under MIT" in client.get("/static/pico.min.css").text[:300]
+    assert "SIL Open Font License" in client.get("/static/fonts/Inter-OFL.txt").text
+    assert client.get("/static/icons.svg").status_code == 200
     assert "0BSD" in client.get("/static/htmx.min.js").text[:300]
     assert "htmx:configRequest" in client.get("/static/app.js").text
 

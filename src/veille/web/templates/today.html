@@ -1,30 +1,50 @@
 {% extends "base.html" %}
-{% from "_macros.html" import article_body %}
+{% from "_macros.html" import icon, article_body, article_badge, empty %}
 {% block title %}{{ day | fr_date }}{% endblock %}
 {% block content %}
-<hgroup>
-  <h1>{% if is_today %}Aujourd'hui{% else %}Journal du jour{% endif %}</h1>
-  <p>{{ day | fr_date }}</p>
-</hgroup>
-<nav class="day-nav" aria-label="Navigation entre les jours">
-  {% if previous_day %}<a href="/?day={{ previous_day.isoformat() }}" rel="prev">← {{ previous_day | fr_date }}</a>{% else %}<span></span>{% endif %}
-  {% if not is_today %}<a href="/">Aujourd'hui</a>{% endif %}
-  {% if next_day %}<a href="/?day={{ next_day.isoformat() }}" rel="next">{{ next_day | fr_date }} →</a>{% else %}<span></span>{% endif %}
-</nav>
+<header class="page-head">
+  <div class="page-head__text">
+    <p class="eyebrow">{{ icon("calendar") }}{{ day | fr_date }}</p>
+    <h1>{% if is_today %}Aujourd'hui{% else %}Journal du jour{% endif %}</h1>
+  </div>
+  <nav class="day-nav" aria-label="Navigation entre les jours">
+    {% if previous_day %}<a class="btn btn--secondary btn--sm" href="/?day={{ previous_day.isoformat() }}" rel="prev" title="{{ previous_day | fr_date }}">{{ icon("chevron-left") }}<span>Veille précédente</span></a>{% endif %}
+    {% if not is_today %}<a href="/" class="btn btn--ghost btn--sm">Aujourd'hui</a>{% endif %}
+    {% if next_day %}<a class="btn btn--secondary btn--sm" href="/?day={{ next_day.isoformat() }}" rel="next" title="{{ next_day | fr_date }}"><span>Veille suivante</span>{{ icon("chevron-right") }}</a>{% endif %}
+  </nav>
+</header>
 {% if not blocks %}
-<p>Aucun thème actif. <a href="/themes">Créer un thème</a>.</p>
+{{ empty("Aucun thème actif", "Créez un thème pour recevoir chaque matin une synthèse des actualités qui vous intéressent.", "themes", "/themes", "Créer un thème") }}
+{% else %}
+<div class="edition">
+<nav class="toc" aria-label="Thèmes du jour">
+  <p class="eyebrow toc__label">Dans cette édition</p>
+  {% for block in blocks %}
+  <a href="#theme-{{ block.theme.id }}">{{ block.theme.name }}{% if block.state == "ok" %} <span class="toc__count">{{ block.article.entry_count }}</span>{% endif %}</a>
+  {% endfor %}
+</nav>
+<div class="stack">
+  {% for block in blocks %}
+  <article class="card story" id="theme-{{ block.theme.id }}">
+    <header class="story__head">
+      <div class="story__titles">
+        <h2 class="story__theme">{{ block.theme.name }}</h2>
+        {% if block.state == "ok" and not block.article.title.startswith(block.theme.name) %}<p class="story__dek">{{ block.article.title }}</p>{% endif %}
+      </div>
+      {% if block.article %}{{ article_badge(block.article) }}
+      {% elif block.state == "failed" %}<span class="badge badge--error">Échec</span>
+      {% else %}<span class="badge">En attente</span>{% endif %}
+    </header>
+    {% if block.state == "missing" %}
+    <p class="story__state">{{ icon("clock") }}<span>Pas encore généré.</span></p>
+    {% elif block.state == "failed" %}
+    <p class="story__state">{{ icon("alert") }}<span>La génération a échoué lors du dernier passage (voir <a href="/admin/runs">/admin/runs</a>).</span></p>
+    {% else %}
+    {{ article_body(block.article, empty_text) }}
+    {% endif %}
+  </article>
+  {% endfor %}
+</div>
+</div>
 {% endif %}
-{% for block in blocks %}
-<article>
-  <header><h2>{{ block.theme.name }}</h2></header>
-  {% if block.state == "missing" %}
-  <p class="muted">Pas encore généré.</p>
-  {% elif block.state == "failed" %}
-  <p class="muted">La génération a échoué lors du dernier passage (voir <a href="/admin/runs">/admin/runs</a>).</p>
-  {% else %}
-  {% if block.state == "ok" %}<h3>{{ block.article.title }}</h3>{% endif %}
-  {{ article_body(block.article, empty_text) }}
-  {% endif %}
-</article>
-{% endfor %}
 {% endblock %}

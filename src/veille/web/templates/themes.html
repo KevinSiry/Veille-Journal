@@ -1,32 +1,46 @@
 {% extends "base.html" %}
+{% from "_macros.html" import icon, page_head, alert, empty %}
 {% block title %}Thèmes{% endblock %}
 {% block content %}
-<h1>Thèmes</h1>
-{% if themes %}
-<div class="table-wrap">
-<table>
-  <thead><tr><th scope="col">Nom</th><th scope="col">Mots-clés</th><th scope="col">État</th></tr></thead>
-  <tbody>
-    {% for t in themes %}
-    <tr>
-      <td><a href="/themes/{{ t.id }}">{{ t.name }}</a></td>
-      <td>{{ t.keywords | join(", ") }}</td>
-      <td>{% if t.active %}Actif{% else %}<span class="muted">Inactif</span>{% endif %}</td>
-    </tr>
-    {% endfor %}
-  </tbody>
-</table>
+{{ page_head("Thèmes", "Chaque thème actif produit une synthèse quotidienne à partir de ses mots-clés et de ses sources RSS.") }}
+<div class="split">
+  <section aria-labelledby="themes-list-title">
+    <div class="section-title">
+      <h2 id="themes-list-title">Vos thèmes</h2>
+      {% if themes %}<span class="muted text-sm">{{ themes | selectattr("active") | list | length }} actif{% if themes | selectattr("active") | list | length > 1 %}s{% endif %} sur {{ themes | length }}</span>{% endif %}
+    </div>
+    {% if themes %}
+    <ul class="theme-list">
+      {% for t in themes %}
+      <li class="theme-item{% if not t.active %} theme-item--inactive{% endif %}">
+        <div class="theme-item__head">
+          <h3 class="theme-item__name"><a href="/themes/{{ t.id }}">{{ t.name }}</a></h3>
+          {% if t.active %}<span class="badge badge--ok">Actif</span>{% else %}<span class="badge">Inactif</span>{% endif %}
+        </div>
+        {% if t.description %}<p class="theme-item__desc">{{ t.description | truncate(160) }}</p>{% endif %}
+        {% if t.keywords %}
+        <p class="cluster" aria-label="Mots-clés">{% for k in t.keywords %}<span class="chip">{{ k }}</span>{% endfor %}</p>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    {{ empty("Aucun thème pour l'instant", "Créez votre premier thème avec le formulaire ci-contre.", "themes") }}
+    {% endif %}
+  </section>
+  <aside class="split__aside">
+    <section class="card" aria-labelledby="new-theme-title">
+      <div class="card__head">
+        <h2 id="new-theme-title">Nouveau thème</h2>
+        <p>Les sources RSS s'ajoutent ensuite, sur la page du thème.</p>
+      </div>
+      {% if error %}{{ alert(error) }}{% endif %}
+      <form method="post" action="/themes" class="form">
+        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+        {% include "_theme_fields.html" %}
+        <button type="submit" class="btn btn--block">{{ icon("plus") }}Créer le thème</button>
+      </form>
+    </section>
+  </aside>
 </div>
-{% else %}
-<p class="muted">Aucun thème pour l'instant.</p>
-{% endif %}
-<article>
-  <h2>Nouveau thème</h2>
-  {% if error %}<p class="error" role="alert">{{ error }}</p>{% endif %}
-  <form method="post" action="/themes">
-    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-    {% include "_theme_fields.html" %}
-    <button type="submit">Créer le thème</button>
-  </form>
-</article>
 {% endblock %}

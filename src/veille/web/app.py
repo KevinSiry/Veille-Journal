@@ -42,13 +42,15 @@ SESSION_COOKIE = "veille_session"
 
 SERVER_ERROR_PAGE = """<!doctype html>
 <html lang="fr">
-<head><meta charset="utf-8"><title>Erreur 500</title>
-<link rel="stylesheet" href="/static/pico.min.css"></head>
-<body><main class="container"><article>
+<head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark"><title>Erreur 500 · Veille Journal</title>
+<link rel="stylesheet" href="/static/app.css"></head>
+<body><main class="main shell"><section class="error-page">
+<p class="error-page__code" aria-hidden="true">500</p>
 <h1>Erreur 500</h1>
 <p>Une erreur interne est survenue. Réessayez plus tard.</p>
-<p><a href="/">Retour à l'accueil</a></p>
-</article></main></body>
+<a href="/" class="btn btn--secondary">Retour à l'accueil</a>
+</section></main></body>
 </html>
 """
 
