@@ -57,10 +57,16 @@ def check_searxng(settings: Settings, client: httpx.Client) -> Check:
             params={"q": "test", "format": "json", "categories": "news"},
         )
         response.raise_for_status()
-        count = len(response.json().get("results", []))
-    except (httpx.HTTPError, ValueError) as exc:
+        payload = response.json()
+        count = len(payload.get("results", []))
+        unresponsive = [str(e[0]) for e in payload.get("unresponsive_engines", []) if e]
+    except (httpx.HTTPError, ValueError, TypeError) as exc:
         return Check("SearXNG", False, f"{settings.searxng_url} : {exc}")
-    return Check("SearXNG", True, f"{settings.searxng_url} ({count} résultats pour « test »)")
+    detail = f"{settings.searxng_url} ({count} résultats pour « test »)"
+    if unresponsive:
+        detail += f", moteurs en échec : {', '.join(unresponsive)}"
+    # Zero results for such a common word means every news engine is failing.
+    return Check("SearXNG", count > 0, detail)
 
 
 def run_checks(settings: Settings, client: httpx.Client | None = None) -> list[Check]:

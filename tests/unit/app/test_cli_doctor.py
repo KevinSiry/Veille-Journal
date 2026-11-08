@@ -203,3 +203,17 @@ def test_run_command_ctrl_c_returns_130(tmp_path: Path, monkeypatch: pytest.Monk
     monkeypatch.setattr(veille.wiring, "run_once", interrupted)
     assert cli.main(["run"]) == cli.EXIT_INTERRUPTED
     assert signal.getsignal(signal.SIGTERM) is before  # restored
+
+
+def test_doctor_searxng_without_results_is_ko(tmp_path: Path) -> None:
+    def handle(request: httpx.Request) -> httpx.Response:
+        if request.url.path == "/api/tags":
+            return httpx.Response(200, json={"models": []})
+        return httpx.Response(
+            200, json={"results": [], "unresponsive_engines": [["bing news", "timeout"]]}
+        )
+
+    with httpx.Client(transport=httpx.MockTransport(handle)) as client:
+        checks = {c.name: c for c in run_checks(_settings(tmp_path), client)}
+    assert not checks["SearXNG"].ok
+    assert "bing news" in checks["SearXNG"].detail

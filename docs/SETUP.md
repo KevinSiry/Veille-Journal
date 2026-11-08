@@ -60,7 +60,8 @@ Il n'est jamais commité (`.gitignore`).
 
 ### 2.1 Prérequis
 
-1. **Docker Desktop** : <https://www.docker.com/products/docker-desktop/> (moteur WSL 2,
+1. **Docker Desktop** 4.27 ou plus récent (Docker Compose ≥ 2.24.4, nécessaire pour
+   `compose.dev.yml`) : <https://www.docker.com/products/docker-desktop/> (moteur WSL 2,
    option par défaut). Redémarrez si demandé, puis lancez Docker Desktop.
 2. **Git** : <https://git-scm.com/download/win>.
 3. Facultatif : **uv** (pour lancer les tests hors docker) :
@@ -145,7 +146,8 @@ docker compose -f docker/compose.yml -f docker/compose.dev.yml up --build
 ```
 
 Au **premier démarrage**, `ollama-init` télécharge les modèles (environ 6 Go : `qwen3:8b`
-puis `bge-m3`). Cela peut prendre de longues minutes ; le `worker` ne démarre qu'une fois les
+puis `bge-m3`, en plus de l'image `ollama` d'environ 3,4 Go ; prévoyez **15 Go d'espace
+disque libre**). Cela peut prendre de longues minutes ; le `worker` ne démarre qu'une fois les
 modèles prêts, le site est disponible avant. Pour suivre le téléchargement depuis un second
 PowerShell :
 
@@ -163,18 +165,21 @@ Astuce : ajoutez `-d` à `up` pour rendre la main (`... up --build -d`), puis
 
 1. Ouvrez <http://localhost:8080> et connectez-vous avec votre mot de passe.
 2. Créez un thème (nom, description, mots-clés, éventuellement des flux RSS).
-3. Lancez une génération tout de suite, sans attendre la nuit :
+3. Vérifiez la santé de l'ensemble (base, Ollama, modèles, SearXNG) ; cette commande
+   fonctionne même si le `worker` n'a pas démarré :
+
+   ```powershell
+   docker compose -f docker/compose.yml -f docker/compose.dev.yml run --rm --no-deps worker veille doctor
+   ```
+
+4. Lancez une génération tout de suite, sans attendre la nuit :
 
    ```powershell
    docker compose -f docker/compose.yml -f docker/compose.dev.yml exec worker veille run --force
    ```
 
-   Sur CPU, comptez plusieurs minutes par thème.
-4. Vérifiez la santé de l'ensemble (base, Ollama, SearXNG) :
-
-   ```powershell
-   docker compose -f docker/compose.yml -f docker/compose.dev.yml exec worker veille doctor
-   ```
+   Sur CPU, comptez plusieurs minutes par thème (mesuré : environ 30 s par actualité
+   résumée sur 4 cœurs, soit 5 à 6 minutes pour un thème de 8 actualités).
 
 Pour arrêter : `Ctrl+C` (ou `docker compose -f docker/compose.yml -f docker/compose.dev.yml down`).
 Les données restent dans les volumes ; `down -v` efface **tout** (base et modèles).
@@ -374,7 +379,7 @@ export IMAGE_TAG="$(cat .image_tag)"   # la version actuellement déployée
 ```bash
 docker compose ps
 docker compose logs --tail 100 web worker
-docker compose exec worker veille doctor
+docker compose run --rm --no-deps worker veille doctor
 curl -fsS http://127.0.0.1:8080/healthz && echo OK
 ```
 
@@ -435,7 +440,6 @@ fichiers de configuration restent valides dans les conteneurs Linux. Si vous avi
 ce fichier, ou si un éditeur a converti des fichiers :
 
 ```powershell
-git config core.autocrlf false
 git rm --cached -r -q . ; git reset --hard
 ```
 
@@ -453,7 +457,6 @@ notepad "$env:USERPROFILE\.wslconfig"
 ```ini
 [wsl2]
 memory=12GB
-processors=4
 ```
 
 Puis `wsl --shutdown` et redémarrez Docker Desktop.
@@ -490,5 +493,5 @@ bien appliqué (c'est le cas avec `compose.dev.yml`).
 ### Le port 8080 est déjà utilisé
 
 Sur le VPS, changez `WEB_PORT` dans `.env` (et dans la configuration du proxy). En local,
-arrêtez l'application qui occupe le port ou modifiez la ligne `ports` de
-`docker/compose.dev.yml`.
+mettez par exemple `WEB_PORT=8081` dans `docker/.env`, relancez la pile et ouvrez
+<http://localhost:8081>.

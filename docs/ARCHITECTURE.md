@@ -66,4 +66,25 @@ browser ──▶ web (FastAPI, Jinja2, HTMX) ──▶ SQLite (WAL + FTS5) ◀�
 
 ## Known debt
 
-(Filled in after the review phase, see below.)
+Reviews (security, quality, ops) were run before the first release; every CRITICAL and
+MAJOR finding was fixed. Remaining minor items:
+
+- **Summary quality (real qwen3:8b run).** Output is French, one sentence, neutral and
+  traceable, but about 1 entry in 4 hits the 35-word cap and ends with "…", some technical
+  terms are mistranslated ("agencé" for *agentic*), and key figures (prices, versions) are
+  often dropped. Next prompt iteration: ask for shorter sentences (≤ 30 words) and to keep
+  one key figure or date when the source gives one; add a glossary few-shot.
+- **bge-m3 + RELEVANCE_THRESHOLD=0.45 not measured on real data** (the sandbox could not pull
+  bge-m3). Check `/admin/runs` after the first nights and tune the threshold if too much or
+  too little is dropped.
+- **Logout revocation lives in process memory**: a web restart forgets it (sessions still
+  expire after 7 days).
+- **Search indexes the raw Markdown** (`body_md`): snippets can show Markdown syntax and URLs
+  are searchable. A plain-text FTS column would be cleaner.
+- **Redirected items** keep their original canonical URL as identity; an item reached through
+  two different short links may be collected twice on different nights.
+- **SearXNG engines**: only some news engines honour `time_range=day`; results depend on
+  which engines answer from the VPS. `veille doctor` reports SearXNG as KO when a common query
+  returns nothing and lists the failing engines.
+- **Small duplications** left in place: `Store.list_articles_for_day` is unused by the web
+  layer, `ItemStatus.NEW` is never persisted.
