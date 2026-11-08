@@ -10,6 +10,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 from dataclasses import dataclass, replace
 
+from veille.collect.canonical import host_key
 from veille.contracts import LLM, Item, ItemStatus, SourceLink
 from veille.pipeline.text import cosine, fold
 
@@ -29,14 +30,23 @@ class Cluster:
         return max((i.relevance or 0.0) for i in self.items)
 
     def linked_items(self) -> list[Item]:
-        """One item per distinct source name (first = most relevant)."""
+        """One item per outlet (first = most relevant).
+
+        An outlet is identified by the host of the item URL without ``www.`` (so the RSS
+        label "Le Monde" and the SearXNG host "lemonde.fr" give one link) and also by its
+        source name (same label on two hosts).
+        """
         seen: set[str] = set()
         linked: list[Item] = []
         for item in self.items:
-            key = fold(item.source_name.strip()) or item.canonical_url
-            if key in seen:
+            host = host_key(item.url) or host_key(item.canonical_url)
+            keys = {f"host:{host}" if host else f"url:{item.canonical_url}"}
+            name = fold(item.source_name.strip())
+            if name:
+                keys.add(f"name:{name}")
+            if keys & seen:
                 continue
-            seen.add(key)
+            seen |= keys
             linked.append(item)
         return linked
 

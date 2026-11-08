@@ -1,19 +1,19 @@
 from datetime import timedelta
 
 from veille.contracts import ExtractedPage, ItemStatus
-from veille.pipeline.prepare import content_hash, prepare_items
+from veille.pipeline.dedupe import Cluster
+from veille.pipeline.prepare import content_hash, enrich_clusters, enrich_item, prepare_items
 
 from .fakes import NOW, FakeExtractor, FakeStore, identity_canonicalize, raw
 
 LONG = "x" * 450
 
 
-def run(raws, *, store=None, extractor=None, known_before=None, canonicalize=identity_canonicalize):
+def run(raws, *, store=None, known_before=None, canonicalize=identity_canonicalize):
     return prepare_items(
         raws,
         theme_id=1,
         store=store or FakeStore(),
-        extractor=extractor or FakeExtractor(),
         canonicalize=canonicalize,
         now=NOW,
         lookback_hours=36,
@@ -63,18 +63,27 @@ def test_bad_url_skipped() -> None:
     ]
 
 
+def test_prepare_is_metadata_only_content_is_snippet() -> None:
+    items = run([raw("https://a/1", "t", snippet="  " + "s" * 3500)])
+    assert items[0].content_text == "s" * 3000
+    assert items[0].content_hash == content_hash("s" * 3000)
+
+
+def enrich(item, extractor):  # type: ignore[no-untyped-def]
+    return enrich_item(item, extractor, content_max_chars=3000)
+
+
 def test_extractor_only_for_short_snippets_and_truncation() -> None:
     page_text = "p" * 5000
     extractor = FakeExtractor({"https://a/short": ExtractedPage("https://a/short", page_text)})
-    items = run(
+    short, long_ = run(
         [
             raw("https://a/short", "short", snippet="tiny"),
             raw("https://a/long", "long", snippet=LONG),
-        ],
-        extractor=extractor,
+        ]
     )
+    short, long_ = enrich(short, extractor), enrich(long_, extractor)
     assert extractor.calls == ["https://a/short"]
-    short, long_ = items
     assert short.content_text == "p" * 3000
     assert short.content_hash == content_hash("p" * 3000)
     assert long_.content_text == LONG
@@ -82,38 +91,33 @@ def test_extractor_only_for_short_snippets_and_truncation() -> None:
 
 def test_extractor_shorter_text_keeps_snippet_and_errors_ignored() -> None:
     extractor = FakeExtractor({"https://a/1": ExtractedPage("https://a/1", "x")})
-    assert (
-        run([raw("https://a/1", "t", snippet="snippet")], extractor=extractor)[0].content_text
-        == "snippet"
-    )
+    (item,) = run([raw("https://a/1", "t", snippet="snippet")])
+    assert enrich(item, extractor).content_text == "snippet"
     failing = FakeExtractor(error=RuntimeError("boom"))
-    assert (
-        run([raw("https://a/1", "t", snippet="snip")], extractor=failing)[0].content_text == "snip"
-    )
+    assert enrich(item, failing) == item
+    assert enrich(item, FakeExtractor()) == item  # extractor returned None
 
 
-def test_redirect_recanonicalized_and_deduped() -> None:
+def test_redirect_keeps_canonical_identity_and_links_final_url() -> None:
     extractor = FakeExtractor(
-        {
-            "https://news.example/r1": ExtractedPage("https://site/article", "body " * 100),
-            "https://news.example/r2": ExtractedPage("https://site/article/", "body"),
-            "https://news.example/r3": ExtractedPage("https://site/known", "body"),
-            "https://news.example/r4": ExtractedPage("https://site/direct", "body"),
-        }
+        {"https://news.example/r1": ExtractedPage("https://site/article", "body " * 100)}
     )
-    store = FakeStore(known={1: {"https://site/known"}})
-    items = run(
+    (item,) = run([raw("https://news.example/r1", "a")])
+    enriched = enrich(item, extractor)
+    assert enriched.canonical_url == "https://news.example/r1"  # identity unchanged
+    assert enriched.url == "https://site/article"
+
+
+def test_enrich_clusters_only_touches_primaries() -> None:
+    a1, a2, b1 = run(
         [
-            raw("https://news.example/r1", "a"),
-            raw("https://news.example/r2", "a bis"),
-            raw("https://news.example/r3", "known"),
-            raw("https://news.example/r4", "direct"),
-            raw("https://site/direct", "direct twin"),
-        ],
-        store=store,
-        extractor=extractor,
+            raw("https://a/1", "a1", snippet="court"),
+            raw("https://a/2", "a2", snippet="court"),
+            raw("https://b/1", "b1", snippet="court"),
+        ]
     )
-    assert [(i.title, i.canonical_url, i.url) for i in items] == [
-        ("a", "https://site/article", "https://site/article"),
-        ("direct twin", "https://site/direct", "https://site/direct"),
-    ]
+    extractor = FakeExtractor({"https://a/1": ExtractedPage("https://a/1", "page " * 200)})
+    out = enrich_clusters([Cluster((a1, a2)), Cluster((b1,))], extractor, content_max_chars=50)
+    assert extractor.calls == ["https://a/1", "https://b/1"]
+    assert out[0].items[1] is a2 and len(out[0].primary.content_text) == 50
+    assert out[1].primary == b1

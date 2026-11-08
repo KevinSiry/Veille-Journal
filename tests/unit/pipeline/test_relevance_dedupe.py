@@ -20,7 +20,7 @@ def item(
     source_id: int | None = None,
     content: str = "",
 ) -> Item:
-    url = url or f"https://x/{title.replace(' ', '-')}"
+    url = url or f"https://{source.lower()}.example/{title.replace(' ', '-')}"
     return Item(
         url,
         url,
@@ -110,3 +110,15 @@ def test_select_top() -> None:
 def test_empty_source_name_link() -> None:
     c = Cluster((replace(item("x"), source_name=" "),))
     assert c.source_links()[0].name == "Source"
+
+
+def test_links_deduped_per_outlet_host() -> None:
+    rss = item("Panne", url="https://www.lemonde.fr/a", source="Le Monde", rel=0.9)
+    searx = item("Panne bis", url="https://lemonde.fr/b", source="lemonde.fr", rel=0.8)
+    other = item("Panne ter", url="https://zdnet.fr/c", source="ZDNet", rel=0.7)
+    same_name = item("Panne 4", url="https://amp.zdnet.example/d", source="ZDNet", rel=0.6)
+    links = Cluster((rss, searx, other, same_name)).source_links()
+    assert [(link.name, link.url) for link in links] == [
+        ("Le Monde", "https://www.lemonde.fr/a"),
+        ("ZDNet", "https://zdnet.fr/c"),
+    ]

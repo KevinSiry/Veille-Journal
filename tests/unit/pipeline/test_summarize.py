@@ -1,5 +1,3 @@
-import pytest
-
 from veille.contracts import Item, LLMError, LLMUnavailableError, Origin
 from veille.llm import FakeLLM
 from veille.pipeline.dedupe import Cluster
@@ -27,8 +25,8 @@ OK = {"relevant": True, "headline_fr": "Titre", "summary_fr": "Une phrase."}
 def cluster(*titles: str) -> Cluster:
     items = tuple(
         Item(
-            f"https://x/{i}",
-            f"https://x/{i}",
+            f"https://s{i}.example/{i}",
+            f"https://s{i}.example/{i}",
             t,
             NOW,
             NOW,
@@ -78,14 +76,15 @@ def test_not_relevant_and_empty() -> None:
     assert summarize_cluster(cluster("t"), make_theme(), llm).reason == "empty"
 
 
-def test_unavailable_twice_raises_once_retries() -> None:
+def test_unavailable_twice_flags_outcome_once_retries() -> None:
     llm = FakeLLM([LLMUnavailableError("down"), LLMUnavailableError("down")])
-    with pytest.raises(LLMUnavailableError):
-        summarize_cluster(cluster("t"), make_theme(), llm)
+    out = summarize_cluster(cluster("t"), make_theme(), llm)
+    assert out.entry is None and out.unavailable and out.reason.startswith("llm-error")
     llm = FakeLLM([LLMUnavailableError("down"), OK])
     assert summarize_cluster(cluster("t"), make_theme(), llm).entry is not None
     llm = FakeLLM([LLMUnavailableError("down"), LLMError("bad")])
-    assert summarize_cluster(cluster("t"), make_theme(), llm).entry is None
+    out = summarize_cluster(cluster("t"), make_theme(), llm)
+    assert out.entry is None and not out.unavailable
 
 
 def test_tokens_from_last_usage() -> None:

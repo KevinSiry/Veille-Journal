@@ -2,9 +2,12 @@
 
 Policy (documented in docs/PROMPTS.md):
 - ``LLMError`` (invalid JSON, wrong shape, HTTP error...) -> retry once, then the cluster
-  is dropped. Never crashes the theme.
-- ``LLMUnavailableError`` on both attempts -> re-raised: the theme is marked in error.
-- ``relevant == false`` -> dropped.
+  is dropped (``SummaryOutcome.reason`` starts with ``llm-error``).
+- ``LLMUnavailableError`` (Ollama down, busy or timed out) on both attempts -> the cluster
+  is dropped with ``unavailable=True``; the caller (``pipeline.run``) aborts the theme
+  after two consecutive unavailable clusters, and marks it in error when no cluster
+  produced an entry and none was rejected as not relevant.
+- ``relevant == false`` -> dropped (``reason == "not-relevant"``).
 - Post-validation: boilerplate openings removed, first sentence only, summary trimmed to
   35 words at a word boundary with "…", headline trimmed to 12 words.
 """
@@ -50,6 +53,7 @@ class SummaryOutcome:
     llm_calls: int
     tokens: int
     reason: str = ""
+    unavailable: bool = False  # both attempts failed with LLMUnavailableError
 
 
 def strip_boilerplate(text: str) -> str:
@@ -147,10 +151,10 @@ def summarize_cluster(cluster: Cluster, theme: Theme, llm: LLM) -> SummaryOutcom
                 tokens += _usage(llm, SUMMARY_SYSTEM, user, None)
             last_error = exc
     else:
-        if unavailable == 2 and last_error is not None:
-            raise last_error
         logger.warning("Cluster %r dropped after retry: %s", cluster.primary.title, last_error)
-        return SummaryOutcome(None, calls, tokens, reason=f"llm-error: {last_error}")
+        return SummaryOutcome(
+            None, calls, tokens, reason=f"llm-error: {last_error}", unavailable=unavailable == 2
+        )
 
     if not relevant:
         return SummaryOutcome(None, calls, tokens, reason="not-relevant")

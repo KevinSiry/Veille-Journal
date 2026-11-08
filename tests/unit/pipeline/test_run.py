@@ -112,15 +112,119 @@ def test_happy_path_two_sources_one_entry() -> None:
     assert store.known_calls[0][2] is None  # no force -> no "before"
 
 
-def test_invalid_json_retry_then_drop() -> None:
+def test_llm_failing_on_every_cluster_is_theme_error_nothing_saved() -> None:
     store = FakeStore(themes=[make_theme()])
     llm = FakeLLM(["{oops", "nope"])
     result = go(store, [FakeCollector(outage_items())], llm)
+    assert not store.saved  # never "Rien de notable aujourd'hui." on an LLM failure
+    assert len(llm.calls) == 2 and result.status is RunStatus.ERROR
+    stats = result.stats.themes[0]
+    assert stats.status == "error" and "échoué sur tous les sujets" in (stats.error or "")
+
+
+def test_one_cluster_rejected_one_failed_saves_empty_article() -> None:
+    events = ["lance Foo", "ferme Bar"]
+    items = [
+        raw(f"https://n{i}/a", f"Azure {e}", snippet=f"Azure {e}. " + OUTAGE, source_name=f"S{i}")
+        for i, e in enumerate(events)
+    ]
+    store = FakeStore(themes=[make_theme()])
+    llm = FakeLLM([{"relevant": False, "headline_fr": "x", "summary_fr": "y"}, "{", "{"])
+    result = go(store, [FakeCollector(items)], llm)
     draft = store.article_for(1).draft
     assert draft.status is ArticleStatus.EMPTY and EMPTY_ARTICLE_TEXT in draft.body_md
-    assert len(llm.calls) == 2 and result.status is RunStatus.OK
-    assert all(i.status is ItemStatus.DROPPED for i in store.article_for(1).items)
     assert result.stats.themes[0].status == "empty"
+
+
+def _distinct_events(n: int) -> list:
+    events = ["lance Foo", "ferme Bar", "rachète Baz", "annonce Qux"][:n]
+    return [
+        raw(f"https://n{i}/a", f"Azure {e}", snippet=f"Azure {e}. " + OUTAGE, source_name=f"S{i}")
+        for i, e in enumerate(events)
+    ]
+
+
+def test_two_consecutive_unavailable_clusters_abort_the_theme() -> None:
+    store = FakeStore(themes=[make_theme()])
+    busy = LLMUnavailableError("busy")
+    llm = FakeLLM([busy, busy, busy, busy])
+    result = go(store, [FakeCollector(_distinct_events(4))], llm)
+    assert len(llm.calls) == 4  # 2 clusters x 2 attempts, the last 2 clusters not tried
+    assert not store.saved
+    stats = result.stats.themes[0]
+    assert stats.status == "error" and "consécutifs" in (stats.error or "")
+
+
+def test_one_unavailable_cluster_is_tolerated() -> None:
+    store = FakeStore(themes=[make_theme()])
+    busy = LLMUnavailableError("busy")
+    llm = FakeLLM([busy, busy])  # then deterministic answers
+    result = go(store, [FakeCollector(_distinct_events(3))], llm)
+    assert result.stats.themes[0].status == "ok"
+    assert store.article_for(1).draft.entry_count == 2
+
+
+def test_extraction_only_for_selected_primaries() -> None:
+    from veille.contracts import ExtractedPage
+
+    items = _distinct_events(4)
+    items = [raw(i.url, i.title, snippet="court", source_name=i.source_name) for i in items]
+    off_topic = [raw(f"https://off/{k}", f"Recette tarte {k}", snippet="court") for k in range(5)]
+    pages = {i.url: ExtractedPage(i.url, OUTAGE) for i in items + off_topic}
+    extractor = FakeExtractor(pages)
+    store = FakeStore(themes=[make_theme()])
+    go(
+        store,
+        [FakeCollector(items + off_topic)],
+        FakeLLM(),
+        extractor=extractor,
+        cfg=settings(max_items_per_theme=2),
+    )
+    assert len(extractor.calls) == 2  # top-N primaries only
+    assert not any(url.startswith("https://off/") for url in extractor.calls)  # stage 1 drop
+    used = [i for i in store.article_for(1).items if i.status is ItemStatus.USED]
+    assert {i.url for i in used} == set(extractor.calls)
+    assert all(i.content_text == OUTAGE.strip()[:3000] for i in used)
+
+
+def test_heartbeat_before_each_theme_and_cluster() -> None:
+    themes = [make_theme(1), make_theme(2, name="Autre")]
+    store = FakeStore(themes=themes)
+    go(store, [FakeCollector({1: _distinct_events(2), 2: []})], FakeLLM())
+    assert store.heartbeats == [(1, NOW)] * 4  # theme 1, 2 clusters, theme 2
+
+
+def test_heartbeat_failure_is_not_fatal() -> None:
+    class NoBeat(FakeStore):
+        def heartbeat_run(self, run_id, now):  # type: ignore[no-untyped-def]
+            raise RuntimeError("locked")
+
+    store = NoBeat(themes=[make_theme()])
+    assert go(store, [FakeCollector(outage_items())], FakeLLM()).status is RunStatus.OK
+
+
+def test_interrupt_records_error_and_propagates() -> None:
+    store = FakeStore(themes=[make_theme()])
+    with pytest.raises(KeyboardInterrupt):
+        go(store, [FakeCollector(error=KeyboardInterrupt())], FakeLLM())  # type: ignore[arg-type]
+    run = store.runs[1]
+    assert run["status"] is RunStatus.ERROR and "interrompue" in str(run["error"])
+    assert not store.saved
+
+
+def test_collector_without_work_is_not_called_nor_counted() -> None:
+    class Idle(FakeCollector):
+        def has_work(self, theme, sources):  # type: ignore[no-untyped-def]
+            return False
+
+    idle = Idle()
+    store = FakeStore(themes=[make_theme()])
+    result = go(store, [idle, FakeCollector(error=CollectError("searxng down"))], FakeLLM())
+    assert idle.calls == [] and not store.saved
+    assert result.stats.themes[0].status == "error"
+    # Nobody has work at all: legitimately empty day.
+    store = FakeStore(themes=[make_theme()])
+    assert go(store, [Idle()], FakeLLM()).stats.themes[0].status == "empty"
 
 
 def test_invalid_json_retry_success() -> None:

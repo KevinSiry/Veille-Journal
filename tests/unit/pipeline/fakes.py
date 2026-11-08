@@ -66,6 +66,7 @@ class FakeStore:
     known_calls: list[tuple[int, list[str], datetime | None]] = field(default_factory=list)
     runs: dict[int, dict[str, object]] = field(default_factory=dict)
     purged_before: list[datetime] = field(default_factory=list)
+    heartbeats: list[tuple[int, datetime]] = field(default_factory=list)
 
     def list_themes(self, *, active_only: bool = False) -> list[Theme]:
         return [t for t in self.themes if t.active or not active_only]
@@ -109,6 +110,9 @@ class FakeStore:
         run_id = len(self.runs) + 1
         self.runs[run_id] = {"trigger": trigger, "started_at": now, "status": RunStatus.RUNNING}
         return run_id
+
+    def heartbeat_run(self, run_id: int, now: datetime) -> None:
+        self.heartbeats.append((run_id, now))
 
     def finish_run(
         self,

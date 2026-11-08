@@ -1,7 +1,18 @@
-"""Step 1: turn collected ``RawItem``s into new, enriched ``Item``s for one theme.
+"""Step 1: turn collected ``RawItem``s into new ``Item``s for one theme, and (after
+top-N selection) enrich the few items that will be summarised.
 
-Window filter -> canonical URL -> in-batch dedupe -> exclude already-known URLs ->
-content (snippet or extracted page) -> truncation + content hash.
+``prepare_items`` is metadata only (no network): window filter -> canonical URL ->
+in-batch dedupe -> exclude already-known URLs -> content = snippet (truncated + hash).
+
+``enrich_clusters`` runs after ``select_top``: only the primary item of each selected
+cluster whose snippet is shorter than ``MIN_SNIPPET_CHARS`` gets its page downloaded and
+extracted, so at most ``max_items_per_theme`` pages are fetched per theme.
+
+Identity after a redirect: the item keeps the canonical URL computed from the collected
+URL (its identity key, already checked against the known URLs and the batch), only its
+``url`` (the link shown) follows the final URL. A redirect target that is already known
+is therefore not detected; this is accepted, re-checking would mean dropping an item that
+already passed relevance and clustering.
 """
 
 from __future__ import annotations
@@ -9,10 +20,11 @@ from __future__ import annotations
 import hashlib
 import logging
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime, timedelta
 
 from veille.contracts import ContentExtractor, ExtractedPage, Item, RawItem, Store
+from veille.pipeline.dedupe import Cluster
 
 logger = logging.getLogger(__name__)
 
@@ -58,14 +70,16 @@ def prepare_items(
     *,
     theme_id: int,
     store: Store,
-    extractor: ContentExtractor,
     canonicalize: Callable[[str], str],
     now: datetime,
     lookback_hours: int,
     content_max_chars: int,
     known_before: datetime | None = None,
 ) -> list[Item]:
-    """Return the new items of the batch, in collection order, status NEW."""
+    """Return the new items of the batch, in collection order, status NEW.
+
+    ``content_text`` is the (truncated) snippet; see :func:`enrich_clusters`.
+    """
     seen: set[str] = set()
     candidates: list[_Candidate] = []
     for raw in raw_items:
@@ -80,38 +94,16 @@ def prepare_items(
     known = store.known_canonical_urls(
         theme_id, [c.canonical_url for c in candidates], before=known_before
     )
-    candidates = [c for c in candidates if c.canonical_url not in known]
-    batch_urls = {c.canonical_url for c in candidates}
-
     items: list[Item] = []
-    taken: set[str] = set()
     for cand in candidates:
-        raw = cand.raw
-        url, canonical, content = cand.url, cand.canonical_url, raw.snippet.strip()
-        if len(content) < MIN_SNIPPET_CHARS:
-            page = _extract(extractor, raw.url)
-            if page is not None:
-                if len(page.text.strip()) > len(content):
-                    content = page.text.strip()
-                if page.final_url and page.final_url != raw.url:
-                    new_canonical = _safe_canonical(canonicalize, page.final_url)
-                    if new_canonical is not None and new_canonical != canonical:
-                        if new_canonical in batch_urls or new_canonical in taken:
-                            continue  # redirect target already in this batch
-                        if store.known_canonical_urls(
-                            theme_id, [new_canonical], before=known_before
-                        ):
-                            continue  # redirect target already known
-                        canonical = new_canonical
-                    url = page.final_url
-        if canonical in taken:
+        if cand.canonical_url in known:
             continue
-        taken.add(canonical)
-        text = content[:content_max_chars]
+        raw = cand.raw
+        text = raw.snippet.strip()[:content_max_chars]
         items.append(
             Item(
-                url=url,
-                canonical_url=canonical,
+                url=cand.url,
+                canonical_url=cand.canonical_url,
                 title=" ".join(raw.title.split()),
                 published_at=raw.published_at,
                 fetched_at=now,
@@ -124,3 +116,30 @@ def prepare_items(
             )
         )
     return items
+
+
+def enrich_item(item: Item, extractor: ContentExtractor, *, content_max_chars: int) -> Item:
+    """Replace a short snippet by the extracted page text (never raises)."""
+    snippet = item.snippet.strip()
+    if len(snippet) >= MIN_SNIPPET_CHARS:
+        return item
+    page = _extract(extractor, item.url)
+    if page is None:
+        return item
+    content = snippet
+    if len(page.text.strip()) > len(content):
+        content = page.text.strip()
+    text = content[:content_max_chars]
+    url = page.final_url or item.url
+    return replace(item, url=url, content_text=text, content_hash=content_hash(text))
+
+
+def enrich_clusters(
+    clusters: Sequence[Cluster], extractor: ContentExtractor, *, content_max_chars: int
+) -> list[Cluster]:
+    """Enrich the primary item of each (already selected) cluster."""
+    enriched: list[Cluster] = []
+    for cluster in clusters:
+        primary = enrich_item(cluster.primary, extractor, content_max_chars=content_max_chars)
+        enriched.append(Cluster((primary, *cluster.items[1:])))
+    return enriched
