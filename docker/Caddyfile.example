@@ -1,0 +1,23 @@
+# Example: expose Veille Journal through an EXISTING Caddy (v2).
+# Add this block to your Caddyfile, replace veille.example.com with your domain, then
+# reload Caddy (`caddy reload` or `docker exec <caddy> caddy reload --config /etc/caddy/Caddyfile`).
+# Caddy obtains and renews the HTTPS certificate automatically.
+
+veille.example.com {
+	encode zstd gzip
+
+	# Option A - Caddy installed on the host (or running with network_mode: host):
+	# compose.yml publishes the site on 127.0.0.1:${WEB_PORT:-8080}.
+	reverse_proxy 127.0.0.1:8080 {
+		# Caddy already sets X-Forwarded-For / X-Forwarded-Proto; these lines make it explicit.
+		header_up X-Forwarded-For {remote_host}
+		header_up X-Forwarded-Proto {scheme}
+	}
+
+	# Option B - Caddy in a container sharing a docker network with the `web` service
+	# (attach `web` to that external network, like in compose.traefik.example.yml):
+	# reverse_proxy web:8080 {
+	# 	header_up X-Forwarded-For {remote_host}
+	# 	header_up X-Forwarded-Proto {scheme}
+	# }
+}
