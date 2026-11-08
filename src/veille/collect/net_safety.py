@@ -6,7 +6,7 @@ article links found in feeds or search results, redirect targets) must go throug
 
 - validates the URL and every IP its host resolves to (:func:`assert_public_url`);
 - follows redirects manually (at most :data:`MAX_REDIRECTS`), re-validating each hop;
-- streams the body and aborts above ``max_bytes``;
+- asks for uncompressed bodies, streams them and aborts above ``max_bytes``;
 - applies a per-host rate limit (1 request per second);
 - when it builds its own client, pins the TCP connection to an address validated at
   connect time (see :class:`GuardedBackend`), which closes the DNS-rebinding window
@@ -383,7 +383,13 @@ class SafeHttp:
         errors, timeouts, too many redirects or a body larger than ``max_bytes``.
         Non-2xx statuses are returned, not raised.
         """
-        headers = {"User-Agent": self._settings.user_agent, "Accept": accept}
+        # identity: no compressed bodies, so ``max_bytes`` bounds what the server sends
+        # (httpx would otherwise inflate gzip/brotli transparently: decompression bombs).
+        headers = {
+            "User-Agent": self._settings.user_agent,
+            "Accept": accept,
+            "Accept-Encoding": "identity",
+        }
         current = url.strip()
         hops: list[str] = []
         for _ in range(self._max_redirects + 1):

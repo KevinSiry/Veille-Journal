@@ -49,12 +49,16 @@ def parse_day(value: str) -> date:
         raise HTTPException(status_code=404, detail="Date invalide.") from None
 
 
+MAX_PAGE = 10_000
+
+
 def parse_page(value: str | None) -> int:
+    """Page number from the query string, clamped to ``1..MAX_PAGE``."""
     try:
         page = int(value) if value else 1
     except ValueError:
         return 1
-    return max(page, 1)
+    return min(max(page, 1), MAX_PAGE)
 
 
 def parse_theme_id(value: str | None) -> int | None:

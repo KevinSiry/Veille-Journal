@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
+import threading
 from collections.abc import Callable, Iterable
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Annotated, Any
 
@@ -44,10 +45,38 @@ MSG_URL_REQUIRED = "L'adresse du flux est obligatoire."
 MSG_URL_TOO_LONG = "L'adresse du flux est trop longue."
 MSG_LLM_BUSY = "Le modèle est occupé ou indisponible, réessayez plus tard."
 MSG_LLM_EMPTY = "Le modèle n'a proposé aucun mot-clé exploitable, réessayez."
+MSG_SUGGEST_IN_FLIGHT = "Une suggestion est déjà en cours, réessayez dans un instant."
+MSG_SOURCE_DUPLICATE = "Ce flux est déjà suivi pour ce thème."
 
-# Keyword suggestion runs in a small dedicated pool so a hung model call cannot block
-# the request beyond ``keyword_suggest_timeout_s``.
-_SUGGEST_POOL = ThreadPoolExecutor(max_workers=2, thread_name_prefix="keywords")
+
+class SuggestionBusyError(Exception):
+    """A keyword suggestion is already running (possibly a timed-out one)."""
+
+
+class KeywordSuggester:
+    """Runs one keyword suggestion at a time in a single dedicated worker thread.
+
+    A model call that exceeds the timeout cannot be cancelled: it keeps the slot until it
+    finishes, and new suggestions are refused meanwhile instead of piling up threads.
+    """
+
+    def __init__(self) -> None:
+        self._pool = ThreadPoolExecutor(max_workers=1, thread_name_prefix="keywords")
+        self._slot = threading.Lock()
+
+    def run(self, call: Callable[[], dict[str, Any]], *, timeout: float) -> dict[str, Any]:
+        if not self._slot.acquire(blocking=False):
+            raise SuggestionBusyError
+        try:
+            future = self._pool.submit(call)
+        except BaseException:
+            self._slot.release()
+            raise
+        future.add_done_callback(self._release)
+        return future.result(timeout=timeout)
+
+    def _release(self, future: Future[dict[str, Any]]) -> None:
+        self._slot.release()
 
 
 def normalize_keywords(
@@ -189,8 +218,12 @@ def suggest_keywords(
         call: Callable[[], dict[str, Any]] = lambda: llm.chat_json(  # noqa: E731
             KEYWORDS_SYSTEM, build_keywords_user(name, description), KEYWORDS_SCHEMA
         )
+        suggester: KeywordSuggester = request.app.state.keyword_suggester
         try:
-            result = _SUGGEST_POOL.submit(call).result(timeout=settings.keyword_suggest_timeout_s)
+            result = suggester.run(call, timeout=settings.keyword_suggest_timeout_s)
+        except SuggestionBusyError:
+            logger.info("Keyword suggestion refused: another one is in flight")
+            error = MSG_SUGGEST_IN_FLIGHT
         except (LLMError, FuturesTimeoutError, TimeoutError) as exc:
             logger.warning("Keyword suggestion failed: %s", exc)
             error = MSG_LLM_BUSY
@@ -278,6 +311,9 @@ def add_source(
         error = MSG_URL_REQUIRED
     elif len(url) > MAX_URL:
         error = MSG_URL_TOO_LONG
+    elif any(source.url == url for source in store.list_sources(theme_id)):
+        # Checked before validating, to avoid a useless fetch.
+        error = MSG_SOURCE_DUPLICATE
     else:
         validator: Callable[[str], str] = request.app.state.feed_validator
         try:
@@ -285,8 +321,13 @@ def add_source(
         except (CollectError, UnsafeURLError) as exc:
             error = str(exc) or "Ce flux n'a pas pu être validé."
         else:
-            store.add_source(theme_id, url, label or title.strip()[:MAX_LABEL] or url)
-            return RedirectResponse(f"/themes/{theme_id}#sources", status_code=303)
+            try:
+                store.add_source(theme_id, url, label or title.strip()[:MAX_LABEL] or url)
+            except ValueError:
+                # Concurrent insert of the same URL (UNIQUE constraint).
+                error = MSG_SOURCE_DUPLICATE
+            else:
+                return RedirectResponse(f"/themes/{theme_id}#sources", status_code=303)
     return _render_edit(
         request, store, theme, source_error=error, source_form=source_form, status_code=400
     )

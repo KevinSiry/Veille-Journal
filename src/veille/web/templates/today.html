@@ -19,6 +19,8 @@
   <header><h2>{{ block.theme.name }}</h2></header>
   {% if block.state == "missing" %}
   <p class="muted">Pas encore généré.</p>
+  {% elif block.state == "failed" %}
+  <p class="muted">La génération a échoué lors du dernier passage (voir <a href="/admin/runs">/admin/runs</a>).</p>
   {% else %}
   {% if block.state == "ok" %}<h3>{{ block.article.title }}</h3>{% endif %}
   {{ article_body(block.article, empty_text) }}

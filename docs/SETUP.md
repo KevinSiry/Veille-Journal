@@ -116,6 +116,12 @@ Lancez la commande deux fois et collez les résultats dans :
 (Sous Linux : `python3 -c "import secrets; print(secrets.token_urlsafe(48))"` ou
 `openssl rand -base64 48`.)
 
+Ces valeurs sont vides dans `.env.example` : tant que `SESSION_SECRET` est vide, trop court,
+peu aléatoire (moins de 12 caractères différents) ou ressemble à un texte d'exemple, le site
+refuse de démarrer et le journal (`docker compose logs web`) indique comment le générer.
+De même, `APP_PASSWORD_HASH` doit rester vide (connexion désactivée) ou contenir un hash qui
+commence par `$argon2id$` (étape suivante).
+
 ### 2.4 Générer le hash du mot de passe
 
 ```powershell
@@ -232,6 +238,8 @@ Collez le contenu de `.env.example`, puis :
   `docker run --rm -it ghcr.io/kevinsiry/veille-journal:latest veille hash-password`,
   **entre apostrophes simples** ;
 - `COOKIE_SECURE=true` (le site est servi en HTTPS par le proxy) ;
+- `FORWARDED_ALLOW_IPS=172.16.0.0/12` : adresse(s) du reverse proxy autorisées à transmettre
+  l'IP réelle du visiteur (voir 3.5) ;
 - `WEB_PORT=8080` ou un autre port libre si 8080 est déjà pris par une autre application.
 
 ```bash
@@ -251,11 +259,24 @@ echo "VOTRE_TOKEN" | docker login ghcr.io -u KevinSiry --password-stdin
 ### 3.5 Brancher le reverse proxy existant
 
 Le service écoute sur `127.0.0.1:${WEB_PORT}` (8080 par défaut). Le serveur web (uvicorn)
-est lancé avec `--proxy-headers --forwarded-allow-ips="*"` : il fait confiance aux en-têtes
-`X-Forwarded-For` / `X-Forwarded-Proto` envoyés par le proxy, ce qui permet à la limite de
-tentatives de connexion de voir la vraie adresse IP du visiteur. Comme le port n'est publié
-que sur `127.0.0.1` (ou sur un réseau docker partagé avec le proxy), personne d'autre ne
-peut forger ces en-têtes.
+est lancé avec `--proxy-headers` et ne fait confiance aux en-têtes `X-Forwarded-For` /
+`X-Forwarded-Proto` que s'ils viennent d'une adresse listée dans `FORWARDED_ALLOW_IPS`
+(`127.0.0.1` si la variable est absente). C'est ce qui permet à la limite de tentatives de
+connexion de voir la vraie adresse IP du visiteur ; ne mettez **jamais** `*`, sinon n'importe
+qui pourrait falsifier son adresse et contourner cette limite.
+
+Le site tourne dans un conteneur : le proxy n'y arrive pas depuis `127.0.0.1` mais depuis un
+réseau docker.
+
+- Proxy installé sur la machine (Caddy, nginx) qui joint `127.0.0.1:8080` : le conteneur voit
+  la passerelle du réseau docker (`172.17.0.1`, `172.18.0.1`...).
+- Proxy dans un conteneur (Traefik, Caddy) sur un réseau docker partagé avec `web` : le
+  conteneur voit l'adresse du proxy sur ce réseau (`172.x.y.z`).
+
+Dans les deux cas, la valeur recommandée est `FORWARDED_ALLOW_IPS=172.16.0.0/12` (plages des
+réseaux docker par défaut). Pour être plus strict, indiquez l'adresse exacte, lue avec
+`docker network inspect <réseau>` (champ `Gateway`, ou `IPv4Address` du conteneur du proxy).
+Après modification : `docker compose up -d web`.
 
 **Caddy** — voir `docker/Caddyfile.example` : ajoutez le bloc à votre Caddyfile, remplacez
 `veille.example.com`, puis rechargez Caddy (`sudo systemctl reload caddy`, ou
@@ -356,6 +377,9 @@ docker compose logs --tail 100 web worker
 docker compose exec worker veille doctor
 curl -fsS http://127.0.0.1:8080/healthz && echo OK
 ```
+
+Sans session, `/healthz` ne renvoie que `{"status": ..., "db": ...}` (code 200 ou 503) ; la
+version et la dernière exécution ne sont visibles qu'une fois connecté (ou sur `/admin/runs`).
 
 Lancer une génération à la main : `docker compose exec worker veille run --force`.
 

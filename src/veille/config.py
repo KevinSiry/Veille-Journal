@@ -50,8 +50,10 @@ class Settings(BaseSettings):
     # web
     web_host: str = "0.0.0.0"  # noqa: S104 - inside the container; host bind is 127.0.0.1
     web_port: int = 8080
-    # Trusted proxy IPs for X-Forwarded-For (the web port is bound to 127.0.0.1 by compose).
-    forwarded_allow_ips: str = "*"
+    # Addresses/CIDRs whose X-Forwarded-For / X-Forwarded-Proto headers uvicorn trusts.
+    # Never "*": anyone could then spoof their IP and dodge the login rate limit. In docker
+    # the reverse proxy arrives from a docker network, e.g. "172.16.0.0/12" (see .env.example).
+    forwarded_allow_ips: str = "127.0.0.1"
 
     # misc
     log_level: str = "INFO"
