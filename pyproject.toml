@@ -1,0 +1,81 @@
+[project]
+name = "veille-journal"
+version = "0.0.0"
+description = "Personal nightly news digest: themes, RSS + SearXNG collection, local LLM summaries in French."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "jinja2>=3.1",
+    "python-multipart>=0.0.9",
+    "itsdangerous>=2.2",
+    "pydantic>=2.8",
+    "pydantic-settings>=2.4",
+    "httpx>=0.27",
+    "feedparser>=6.0",
+    "trafilatura>=1.12",
+    "argon2-cffi>=23.1",
+    "markdown-it-py>=3.0",
+    "tzdata>=2024.1",
+]
+
+[project.scripts]
+veille = "veille.cli:main"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "pytest-cov>=5.0",
+    "respx>=0.21",
+    "ruff>=0.6",
+    "mypy>=1.11",
+]
+
+[build-system]
+requires = ["hatchling>=1.25"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/veille"]
+
+[tool.hatch.build.targets.wheel.force-include]
+"src/veille/db/migrations" = "veille/db/migrations"
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "S", "SIM", "RUF", "PTH", "N"]
+ignore = ["S101", "RUF001", "RUF002", "RUF003"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["S", "N802"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+mypy_path = "src"
+packages = ["veille"]
+warn_unused_ignores = true
+
+[[tool.mypy.overrides]]
+module = ["feedparser", "feedparser.*", "trafilatura", "trafilatura.*"]
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-ra --strict-markers"
+markers = ["e2e: end-to-end tests"]
+
+[tool.coverage.run]
+source = ["veille"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+skip_covered = true
+exclude_lines = ["pragma: no cover", "if TYPE_CHECKING:", "raise NotImplementedError", "\\.\\.\\."]
