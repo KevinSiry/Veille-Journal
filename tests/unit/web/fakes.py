@@ -208,6 +208,9 @@ class FakeStore:
             error=error,
         )
 
+    def heartbeat_run(self, run_id: int, now: datetime) -> None:
+        return None
+
     def last_run(self) -> Run | None:
         return self.runs[-1] if self.runs else None
 
