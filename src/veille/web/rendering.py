@@ -64,7 +64,13 @@ _MD = _build_markdown()
 
 
 def render_markdown(body_md: str) -> Markup:
-    """Render article Markdown with raw HTML disabled; the output is safe to embed."""
+    """Render article Markdown with raw HTML disabled; the output is safe to embed.
+
+    The leading ``## title`` line of the stored body is dropped: pages show the title
+    themselves.
+    """
+    if body_md.startswith("## "):
+        body_md = body_md.split("\n", 1)[1] if "\n" in body_md else ""
     return Markup(_MD.render(body_md))  # noqa: S704 - markdown-it escapes, html disabled
 
 

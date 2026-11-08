@@ -4,10 +4,14 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from typing import TYPE_CHECKING
 
 from veille.clock import SystemClock
 from veille.config import Settings
 from veille.contracts import RunTrigger, Store
+
+if TYPE_CHECKING:
+    from fastapi import FastAPI
 
 logger = logging.getLogger(__name__)
 
@@ -30,7 +34,7 @@ def store_factory(settings: Settings) -> Callable[[], Store]:
     return factory
 
 
-def build_web_app(settings: Settings):  # type: ignore[no-untyped-def]
+def build_web_app(settings: Settings) -> FastAPI:
     from veille.collect.net_safety import SafeHttp
     from veille.collect.rss import validate_feed
     from veille.db import migrate
