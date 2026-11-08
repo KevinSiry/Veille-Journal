@@ -26,11 +26,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # 2) the project itself (installed as a regular wheel, not editable)
 COPY README.md ./
 COPY src ./src
-# Workaround: `[tool.hatch.build.targets.wheel.force-include]` re-adds the migrations that
-# `packages = ["src/veille"]` already ships, which makes hatchling refuse to build the wheel
-# ("A second file is being added"). Drop that table in the build copy only; this is a no-op
-# once pyproject.toml is fixed. The check below fails the build if migrations go missing.
-RUN sed -i '/^\[tool\.hatch\.build\.targets\.wheel\.force-include\]/,/^$/d' pyproject.toml
+# The check below fails the build if the SQL migrations are missing from the wheel.
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-editable \
     && /app/.venv/bin/python -c "import importlib.resources as r; assert r.files('veille.db').joinpath('migrations/001_init.sql').is_file(), 'migrations missing from the wheel'"
