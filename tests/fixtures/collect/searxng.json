@@ -1,0 +1,14 @@
+{
+  "query": "intelligence artificielle",
+  "number_of_results": 4,
+  "results": [
+    {"url": "https://www.lemonde.fr/tech/article/2024/10/08/ia.html", "title": "L'IA en &quot;France&quot;", "content": "<b>Plan</b> annoncé", "publishedDate": "2024-10-08T09:00:00", "engine": "bing news", "engines": ["bing news"]},
+    {"url": "https://example.net/aware", "title": "Aware date", "content": "x", "publishedDate": "2024-10-08T09:00:00+02:00", "engine": "qwant news"},
+    {"url": "https://example.org/nodate", "title": "No date", "content": null, "publishedDate": null},
+    {"url": "ftp://bad.example/file", "title": "Bad scheme"},
+    {"title": "Missing url"},
+    {"url": "https://example.com/baddate", "title": "Bad date", "content": "y", "publishedDate": "not a date"}
+  ],
+  "answers": [],
+  "suggestions": []
+}

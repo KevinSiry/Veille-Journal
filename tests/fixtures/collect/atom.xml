@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>Blog Atom</title>
+  <id>urn:uuid:60a76c80-d399-11d9-b93C-0003939e0af6</id>
+  <updated>2024-10-08T12:00:00Z</updated>
+  <entry>
+    <title>Entrée Atom</title>
+    <link href="https://atom.example.org/2024/10/entree"/>
+    <id>urn:uuid:1225c695-cfb8-4ebb-aaaa-80da344efa6a</id>
+    <updated>2024-10-08T10:15:00Z</updated>
+    <content type="html">&lt;p&gt;Contenu &lt;em&gt;riche&lt;/em&gt;&lt;/p&gt;</content>
+  </entry>
+</feed>
