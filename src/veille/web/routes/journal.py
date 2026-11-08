@@ -2,14 +2,24 @@
 
 from __future__ import annotations
 
+from collections.abc import Mapping
 from datetime import date
 from typing import Any
+from zoneinfo import ZoneInfo
 
 from fastapi import APIRouter, Request
 from starlette.responses import Response
 
-from veille.contracts import EMPTY_ARTICLE_TEXT, Article, ArticleStatus, Theme
-from veille.web.deps import StoreDep, parse_day, parse_page, parse_theme_id, today
+from veille.clock import local_day
+from veille.contracts import EMPTY_ARTICLE_TEXT, Article, ArticleStatus, Run, Theme
+from veille.web.deps import (
+    SettingsDep,
+    StoreDep,
+    parse_day,
+    parse_page,
+    parse_theme_id,
+    today,
+)
 from veille.web.pagination import Page
 from veille.web.templating import render
 
@@ -26,15 +36,34 @@ def _theme_filter(themes: list[Theme], theme: str | None) -> int | None:
     return theme_id
 
 
+def _failed_theme_ids(run: Run | None, day: date, tz: ZoneInfo) -> set[int]:
+    """Themes whose generation failed in ``run``, if that run produced ``day``."""
+    if run is None or local_day(run.started_at, tz) != day:
+        return set()
+    themes = run.stats.get("themes") if isinstance(run.stats, Mapping) else None
+    if not isinstance(themes, list | tuple):
+        return set()
+    return {
+        item["theme_id"]
+        for item in themes
+        if isinstance(item, Mapping)
+        and item.get("status") == "error"
+        and isinstance(item.get("theme_id"), int)
+    }
+
+
 @router.get("/")
-def today_page(request: Request, store: StoreDep, day: str | None = None) -> Response:
+def today_page(
+    request: Request, store: StoreDep, settings: SettingsDep, day: str | None = None
+) -> Response:
     current = today(request)
     shown = parse_day(day) if day else current
+    failed = _failed_theme_ids(store.last_run(), shown, settings.tz)
     blocks: list[dict[str, Any]] = []
     for theme in store.list_themes(active_only=True):
         article = store.get_article(theme.id, shown)
         if article is None:
-            state = "missing"
+            state = "failed" if theme.id in failed else "missing"
         elif article.status == ArticleStatus.OK:
             state = "ok"
         elif article.status == ArticleStatus.EMPTY:
