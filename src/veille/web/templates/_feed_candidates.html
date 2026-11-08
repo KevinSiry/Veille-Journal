@@ -1,0 +1,30 @@
+<div id="feed-discovery">
+  {% if discovery %}
+    {% if discovery.error %}<p class="error" role="alert">{{ discovery.error }}</p>{% endif %}
+    {% if discovery.candidates %}
+    <form method="post" action="/themes/{{ theme.id }}/sources/bulk">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <fieldset>
+        <legend>Flux trouvés : cochez ceux à suivre</legend>
+        {% for c in discovery.candidates %}
+        <label for="feed-{{ loop.index }}">
+          <input type="checkbox" id="feed-{{ loop.index }}" name="urls" value="{{ c.url }}" checked>
+          <strong>{{ c.title }}</strong> <small class="muted">({{ c.site }})</small>
+          {% if c.latest_title %}<br><small>Dernière actu : {{ c.latest_title }}</small>{% endif %}
+          <br><small class="muted">{{ c.url }}</small>
+        </label>
+        {% endfor %}
+      </fieldset>
+      <button type="submit">Ajouter les flux cochés</button>
+    </form>
+    {% endif %}
+  {% endif %}
+  <form method="post" action="/themes/{{ theme.id }}/discover-feeds"
+        hx-post="/themes/{{ theme.id }}/discover-feeds" hx-target="#feed-discovery" hx-swap="outerHTML">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+    <button type="submit" class="secondary outline">
+      Trouver des flux RSS automatiquement <span class="htmx-indicator" aria-hidden="true">(recherche en cours, jusqu'à une minute…)</span>
+    </button>
+    <small class="muted">À partir des mots-clés du thème : enregistrez-les d'abord.</small>
+  </form>
+</div>

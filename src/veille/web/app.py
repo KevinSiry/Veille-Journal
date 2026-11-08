@@ -3,7 +3,8 @@
 from __future__ import annotations
 
 import logging
-from collections.abc import Callable
+import threading
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request
@@ -17,7 +18,7 @@ from starlette.types import ASGIApp
 
 from veille.clock import SystemClock
 from veille.config import Settings
-from veille.contracts import LLM, Clock, Store
+from veille.contracts import LLM, Clock, FeedCandidate, Store, Theme
 from veille.web.auth import (
     SESSION_MAX_AGE_S,
     AuthRequiredError,
@@ -115,6 +116,7 @@ def create_app(
     llm: LLM | None,
     feed_validator: Callable[[str], str],
     clock: Clock | None = None,
+    feed_discoverer: Callable[[Theme, Sequence[str]], Sequence[FeedCandidate]] | None = None,
 ) -> FastAPI:
     secret = settings.session_secret.get_secret_value()
     check_session_secret(secret)
@@ -136,6 +138,8 @@ def create_app(
     app.state.store_factory = store_factory
     app.state.llm = llm
     app.state.feed_validator = feed_validator
+    app.state.feed_discoverer = feed_discoverer
+    app.state.discovery_lock = threading.Lock()
     app.state.clock = resolved_clock
     app.state.templates = build_templates(settings.tz)
     app.state.login_limiter = LoginRateLimiter(resolved_clock)

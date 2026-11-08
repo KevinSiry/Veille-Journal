@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import logging
 import threading
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Sequence
 from concurrent.futures import Future, ThreadPoolExecutor
 from concurrent.futures import TimeoutError as FuturesTimeoutError
 from typing import Annotated, Any
@@ -15,6 +15,7 @@ from starlette.responses import Response
 
 from veille.contracts import (
     CollectError,
+    FeedCandidate,
     LLMError,
     Store,
     Theme,
@@ -44,6 +45,14 @@ MSG_DESCRIPTION_TOO_LONG = f"La description ne doit pas dépasser {MAX_DESCRIPTI
 MSG_URL_REQUIRED = "L'adresse du flux est obligatoire."
 MSG_URL_TOO_LONG = "L'adresse du flux est trop longue."
 MSG_LLM_BUSY = "Le modèle est occupé ou indisponible, réessayez plus tard."
+MSG_DISCOVERY_OFF = "La recherche automatique de flux est indisponible."
+MSG_DISCOVERY_BUSY = "Une recherche de flux est déjà en cours, réessayez dans un instant."
+MSG_DISCOVERY_FAILED = "La recherche de flux a échoué, réessayez plus tard."
+MSG_DISCOVERY_EMPTY = (
+    "Aucun flux RSS trouvé pour ce thème. Ajoutez des mots-clés plus précis ou un flux à la main."
+)
+MSG_NOTHING_SELECTED = "Cochez au moins un flux à ajouter."
+MAX_BULK = 10
 MSG_LLM_EMPTY = "Le modèle n'a proposé aucun mot-clé exploitable, réessayez."
 MSG_SUGGEST_IN_FLIGHT = "Une suggestion est déjà en cours, réessayez dans un instant."
 MSG_SOURCE_DUPLICATE = "Ce flux est déjà suivi pour ce thème."
@@ -149,6 +158,7 @@ def _render_edit(
     source_error: str | None = None,
     form: dict[str, Any] | None = None,
     source_form: dict[str, str] | None = None,
+    discovery: dict[str, Any] | None = None,
     status_code: int = 200,
 ) -> Response:
     return render(
@@ -156,6 +166,7 @@ def _render_edit(
         "theme_edit.html",
         {
             "theme": theme,
+            "discovery": discovery,
             "sources": store.list_sources(theme.id),
             "error": error,
             "source_error": source_error,
@@ -339,4 +350,71 @@ def delete_source(request: Request, store: StoreDep, theme_id: int, source_id: i
     if all(source.id != source_id for source in store.list_sources(theme_id)):
         raise HTTPException(status_code=404, detail="Source introuvable.")
     store.delete_source(source_id)
+    return RedirectResponse(f"/themes/{theme_id}#sources", status_code=303)
+
+
+def _discover(request: Request, store: Store, theme: Theme) -> dict[str, Any]:
+    """Run feed discovery once at a time; returns the template context of the result."""
+    discoverer: Callable[[Theme, Sequence[str]], Sequence[FeedCandidate]] | None = (
+        request.app.state.feed_discoverer
+    )
+    if discoverer is None:
+        return {"candidates": [], "error": MSG_DISCOVERY_OFF}
+    lock: threading.Lock = request.app.state.discovery_lock
+    if not lock.acquire(blocking=False):
+        return {"candidates": [], "error": MSG_DISCOVERY_BUSY}
+    try:
+        known = [source.url for source in store.list_sources(theme.id)]
+        candidates = list(discoverer(theme, known))
+    except Exception:
+        logger.exception("Feed discovery failed for theme %s", theme.id)
+        return {"candidates": [], "error": MSG_DISCOVERY_FAILED}
+    finally:
+        lock.release()
+    return {"candidates": candidates, "error": None if candidates else MSG_DISCOVERY_EMPTY}
+
+
+@router.post("/themes/{theme_id}/discover-feeds")
+def discover_feeds(request: Request, store: StoreDep, theme_id: int) -> Response:
+    theme = _get_theme_or_404(store, theme_id)
+    discovery = _discover(request, store, theme)
+    if request.headers.get("HX-Request") == "true":
+        return render(request, "_feed_candidates.html", {"theme": theme, "discovery": discovery})
+    return _render_edit(request, store, theme, discovery=discovery)
+
+
+@router.post("/themes/{theme_id}/sources/bulk")
+def add_sources_bulk(
+    request: Request,
+    store: StoreDep,
+    theme_id: int,
+    urls: Annotated[list[str] | None, Form()] = None,
+) -> Response:
+    theme = _get_theme_or_404(store, theme_id)
+    wanted = [u.strip() for u in (urls or []) if u.strip()][:MAX_BULK]
+    if not wanted:
+        return _render_edit(
+            request, store, theme, source_error=MSG_NOTHING_SELECTED, status_code=400
+        )
+    validator: Callable[[str], str] = request.app.state.feed_validator
+    known = {source.url for source in store.list_sources(theme_id)}
+    errors: list[str] = []
+    for url in dict.fromkeys(wanted):
+        if url in known or len(url) > MAX_URL:
+            continue
+        try:  # re-validated: the form content comes from the client
+            title = validator(url)
+            store.add_source(theme_id, url, title.strip()[:MAX_LABEL] or url)
+        except (CollectError, UnsafeURLError) as exc:
+            errors.append(f"{url} : {exc}")
+        except ValueError:
+            continue  # added concurrently
+    if errors:
+        return _render_edit(
+            request,
+            store,
+            theme,
+            source_error="Certains flux n'ont pas pu être ajoutés : " + " ; ".join(errors),
+            status_code=400,
+        )
     return RedirectResponse(f"/themes/{theme_id}#sources", status_code=303)

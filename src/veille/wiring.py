@@ -38,6 +38,7 @@ def store_factory(settings: Settings) -> Callable[[], Store]:
 
 
 def build_web_app(settings: Settings) -> FastAPI:
+    from veille.collect.discover import FeedDiscoverer
     from veille.collect.net_safety import SafeHttp
     from veille.collect.rss import validate_feed
     from veille.db import migrate
@@ -56,6 +57,7 @@ def build_web_app(settings: Settings) -> FastAPI:
         llm=OllamaClient(settings, timeout_s=settings.keyword_suggest_timeout_s),
         feed_validator=feed_validator,
         clock=SystemClock(),
+        feed_discoverer=FeedDiscoverer(settings, http).discover,
     )
 
 

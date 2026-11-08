@@ -59,6 +59,11 @@ def _is_feed(parsed: Any) -> bool:
     return bool(parsed.get("version")) or bool(parsed.get("entries"))
 
 
+# Public aliases used by feed discovery.
+parse_feed = _parse
+is_feed = _is_feed
+
+
 def _entry_datetime(entry: Any) -> datetime | None:
     for key in ("published_parsed", "updated_parsed", "created_parsed"):
         value = entry.get(key)

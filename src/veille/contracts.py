@@ -234,6 +234,16 @@ class Run:
 
 
 @dataclass(frozen=True, slots=True)
+class FeedCandidate:
+    """A feed found by automatic discovery, proposed to the user before being pinned."""
+
+    url: str
+    title: str
+    site: str
+    latest_title: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ExtractedPage:
     final_url: str  # after redirects
     text: str  # extracted main text (may be empty)

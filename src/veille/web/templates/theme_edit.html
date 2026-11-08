@@ -38,6 +38,8 @@
   <p class="muted">Aucune source épinglée.</p>
   {% endif %}
   {% if source_error %}<p class="error" role="alert">{{ source_error }}</p>{% endif %}
+  {% include "_feed_candidates.html" %}
+  <h3>Ajouter un flux à la main</h3>
   <form method="post" action="/themes/{{ theme.id }}/sources">
     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
     <label for="source-url">Adresse du flux RSS</label>
