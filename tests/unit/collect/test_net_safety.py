@@ -196,6 +196,27 @@ def test_get_ok_sends_user_agent_and_accept(
     assert sent.headers["accept"] == "text/plain"
 
 
+def test_requests_uncompressed_bodies(http: SafeHttp, mock_router: respx.MockRouter) -> None:
+    route = mock_router.get("https://example.com/feed").respond(200, content=b"ok")
+    http.get("https://example.com/feed", max_bytes=100)
+    assert route.calls.last.request.headers["accept-encoding"] == "identity"
+
+
+def test_gzip_bomb_still_bounded_by_max_bytes(
+    http: SafeHttp, mock_router: respx.MockRouter
+) -> None:
+    """A server ignoring ``identity`` cannot inflate past ``max_bytes``."""
+    import gzip
+
+    bomb = gzip.compress(b"\0" * 1_000_000)
+    assert len(bomb) < 5_000
+    mock_router.get("https://example.com/bomb").respond(
+        200, content=bomb, headers={"Content-Encoding": "gzip"}
+    )
+    with pytest.raises(ResponseTooLargeError):
+        http.get("https://example.com/bomb", max_bytes=10_000)
+
+
 def test_non_2xx_is_returned(http: SafeHttp, mock_router: respx.MockRouter) -> None:
     mock_router.get("https://example.com/missing").respond(404)
     resp = http.get("https://example.com/missing", max_bytes=10)
