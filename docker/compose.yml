@@ -1,0 +1,171 @@
+# Veille Journal - production stack.
+#
+# Conventions:
+#   - the compose files live in docker/ (locally) or in $DEPLOY_PATH (on the VPS);
+#   - the `.env` file lives NEXT TO this file (docker/.env locally, $DEPLOY_PATH/.env on the
+#     VPS). It is read twice: as `env_file` by the app containers, and by compose itself for
+#     the `${...}` interpolation below (IMAGE_TAG, WEB_PORT, model names, SEARXNG_SECRET).
+#
+# Usage (VPS):   cd $DEPLOY_PATH && IMAGE_TAG=0.1.0 docker compose up -d
+# Usage (local): docker compose -f docker/compose.yml -f docker/compose.dev.yml up --build
+#
+# Networks:
+#   - internal: `internal: true`, no route to the outside world. Service-to-service traffic
+#     (web/worker -> ollama:11434 and searxng:8080, ollama-init -> ollama) uses it.
+#   - egress: ordinary bridge network with outgoing internet access, needed by
+#       web     -> a host port cannot be published from an internal-only network;
+#       worker  -> fetches RSS feeds and article pages;
+#       searxng -> queries the upstream search engines;
+#       ollama  -> `ollama pull` is executed by the server, which downloads the models from
+#                  registry.ollama.ai (ollama-init only sends the order, so it stays internal).
+#   Only `web` publishes a port, bound to 127.0.0.1: the existing reverse proxy of the host
+#   is the only way in. Ollama and SearXNG are never published.
+
+name: veille
+
+x-logging: &logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
+x-app: &app
+  image: ghcr.io/kevinsiry/veille-journal:${IMAGE_TAG:-latest}
+  env_file: .env
+  volumes:
+    - veille-data:/data
+  read_only: true
+  tmpfs:
+    - /tmp
+  security_opt:
+    - no-new-privileges:true
+  cap_drop:
+    - ALL
+  init: true
+  restart: unless-stopped
+  logging: *logging
+
+services:
+  web:
+    <<: *app
+    command: ["veille", "serve"]
+    ports:
+      - "127.0.0.1:${WEB_PORT:-8080}:8080"
+    networks: [internal, egress]
+    cpus: "1.0"
+    mem_limit: 512m
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=4).status == 200 else 1)"
+      interval: 30s
+      timeout: 5s
+      start_period: 30s
+      retries: 3
+
+  worker:
+    <<: *app
+    command: ["veille", "worker"]
+    networks: [internal, egress]
+    # Low priority versus the other apps of the VPS; the heavy lifting is done by ollama.
+    cpu_shares: 256
+    cpus: "2.0"
+    mem_limit: 1g
+    healthcheck:
+      disable: true
+    depends_on:
+      ollama:
+        condition: service_started
+      ollama-init:
+        condition: service_completed_successfully
+      searxng:
+        condition: service_started
+
+  ollama:
+    image: ollama/ollama:0.40.14
+    environment:
+      OLLAMA_NUM_PARALLEL: "1"
+      OLLAMA_MAX_LOADED_MODELS: "2"
+      OLLAMA_KEEP_ALIVE: "10m"
+    volumes:
+      - ollama-models:/root/.ollama
+    networks: [internal, egress]
+    # 6 vCPU budget on the shared 8 vCPU VPS; qwen3:8b (~5 GB) + bge-m3 (~1.2 GB) fit in 12 GB.
+    # The limit must not exceed the host's CPU count (compose.dev.yml removes it).
+    cpus: "${OLLAMA_CPUS:-6.0}"
+    mem_limit: ${OLLAMA_MEM_LIMIT:-12g}
+    cpu_shares: 512
+    security_opt:
+      - no-new-privileges:true
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "ollama", "list"]
+      interval: 15s
+      timeout: 10s
+      start_period: 20s
+      retries: 5
+    logging: *logging
+
+  # One-shot: downloads the models on first start. Idempotent (pulling a model that is
+  # already present only re-checks its manifest). Follow it: docker compose logs -f ollama-init
+  ollama-init:
+    image: ollama/ollama:0.40.14
+    environment:
+      OLLAMA_HOST: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:8b}
+      OLLAMA_EMBED_MODEL: ${OLLAMA_EMBED_MODEL:-bge-m3}
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        set -eu
+        i=0
+        until ollama list >/dev/null 2>&1; do
+          i=$$((i + 1))
+          if [ "$$i" -ge 60 ]; then echo "ollama injoignable" >&2; exit 1; fi
+          sleep 2
+        done
+        for model in "$$OLLAMA_MODEL" "$$OLLAMA_EMBED_MODEL"; do
+          echo "telechargement de $$model (plusieurs minutes la premiere fois)"
+          ollama pull "$$model"
+        done
+        echo "modeles prets"
+    networks: [internal]
+    depends_on:
+      ollama:
+        condition: service_healthy
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: "no"
+    logging: *logging
+
+  searxng:
+    image: searxng/searxng:2026.11.2-cccbc9e15
+    environment:
+      SEARXNG_SECRET: ${SEARXNG_SECRET:?SEARXNG_SECRET manquant dans .env}
+      SEARXNG_BASE_URL: http://searxng:8080/
+      # listen on IPv4: the image default (`::`) fails on hosts where IPv6 is disabled
+      GRANIAN_HOST: 0.0.0.0
+    volumes:
+      - ./searxng/settings.yml:/etc/searxng/settings.yml:ro
+    networks: [internal, egress]
+    cpus: "1.0"
+    mem_limit: 512m
+    security_opt:
+      - no-new-privileges:true
+    cap_drop:
+      - ALL
+    restart: unless-stopped
+    logging: *logging
+
+networks:
+  internal:
+    internal: true
+  egress: {}
+
+volumes:
+  veille-data:
+  ollama-models:

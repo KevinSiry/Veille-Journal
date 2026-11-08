@@ -1,0 +1,32 @@
+# Example: expose Veille Journal through an EXISTING Traefik (v2/v3) running on the host.
+# Copy next to compose.yml, adapt the placeholders, then:
+#   docker compose -f compose.yml -f compose.traefik.yml up -d
+#
+# Placeholders:
+#   veille.example.com -> your domain (DNS A/AAAA record pointing to the VPS)
+#   traefik            -> name of the docker network Traefik is attached to
+#                         (`docker network ls`), declared below as external
+#   letsencrypt        -> name of the certificate resolver defined in Traefik's config
+#   websecure          -> name of Traefik's HTTPS entrypoint
+
+services:
+  web:
+    # Traefik reaches the container directly over the shared network: the 127.0.0.1 port
+    # published by compose.yml is no longer needed (keep it if you also want local access).
+    ports: !reset []
+    networks:
+      - internal
+      - egress
+      - traefik
+    labels:
+      traefik.enable: "true"
+      traefik.docker.network: traefik
+      traefik.http.routers.veille.rule: Host(`veille.example.com`)
+      traefik.http.routers.veille.entrypoints: websecure
+      traefik.http.routers.veille.tls: "true"
+      traefik.http.routers.veille.tls.certresolver: letsencrypt
+      traefik.http.services.veille.loadbalancer.server.port: "8080"
+
+networks:
+  traefik:
+    external: true

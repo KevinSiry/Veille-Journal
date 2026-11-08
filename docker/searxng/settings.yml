@@ -1,0 +1,44 @@
+# SearXNG settings for Veille Journal (private instance, only reached by the worker over the
+# internal docker network). Everything not listed here comes from SearXNG's defaults.
+# The secret key is NOT stored here: it comes from the SEARXNG_SECRET environment variable.
+use_default_settings: true
+
+general:
+  instance_name: "veille-searxng"
+  enable_metrics: false
+
+server:
+  # SEARXNG_SECRET (environment) overrides this placeholder.
+  secret_key: "overridden-by-SEARXNG_SECRET"
+  limiter: false
+  public_instance: false
+  image_proxy: false
+  method: "GET"
+
+search:
+  safe_search: 0
+  autocomplete: ""
+  default_lang: "fr-FR"
+  formats:
+    - html
+    - json
+
+ui:
+  static_use_hash: true
+
+# News engines used by the worker (`categories=news`). Several are enabled so that a blocked
+# or rate-limited engine does not leave a theme without results. Only bing news and reuters
+# support `time_range`; the others are skipped by SearXNG when the worker passes it.
+engines:
+  - name: bing news
+    disabled: false
+  - name: duckduckgo news
+    disabled: false
+  - name: google news
+    disabled: false
+  - name: qwant news
+    disabled: false
+  - name: brave.news
+    disabled: false
+  - name: wikinews
+    disabled: false

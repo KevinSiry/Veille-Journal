@@ -1,0 +1,225 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  test:
+    name: Tests
+    uses: ./.github/workflows/ci.yml
+    with:
+      docker-build: false
+
+  meta:
+    name: Version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      image: ${{ steps.version.outputs.image }}
+    steps:
+      - name: Validate tag and compute names
+        id: version
+        env:
+          TAG: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+        run: |
+          if ! printf '%s' "$TAG" | grep -Eq '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::tag '$TAG' is not vX.Y.Z"
+            exit 1
+          fi
+          # ghcr.io requires lowercase names (KevinSiry/Veille-Journal -> kevinsiry/veille-journal)
+          echo "version=${TAG#v}" >> "$GITHUB_OUTPUT"
+          echo "image=ghcr.io/${REPO,,}" >> "$GITHUB_OUTPUT"
+
+  build-push:
+    name: Build and push image
+    needs: [test, meta]
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: docker/setup-buildx-action@v4
+
+      - uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - id: docker-meta
+        uses: docker/metadata-action@v6
+        with:
+          images: ${{ needs.meta.outputs.image }}
+          flavor: latest=false
+          tags: |
+            type=semver,pattern={{version}}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=Veille Journal
+
+      - uses: docker/build-push-action@v7
+        with:
+          context: .
+          file: docker/Dockerfile
+          platforms: linux/amd64
+          push: true
+          tags: ${{ steps.docker-meta.outputs.tags }}
+          labels: ${{ steps.docker-meta.outputs.labels }}
+          build-args: |
+            VERSION=${{ needs.meta.outputs.version }}
+            REVISION=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    name: GitHub release
+    needs: build-push
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: softprops/action-gh-release@v3
+        with:
+          generate_release_notes: true
+
+  deploy:
+    name: Deploy to the VPS
+    needs: [meta, build-push]
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    environment: production
+    permissions:
+      contents: read
+    steps:
+      - name: Check deployment secrets
+        id: secrets
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_USER: ${{ secrets.VPS_USER }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          if [ -z "$VPS_HOST" ] || [ -z "$VPS_USER" ] || [ -z "$VPS_SSH_KEY" ] || [ -z "$DEPLOY_PATH" ]; then
+            echo "déploiement ignoré : secrets VPS non configurés"
+            echo "### déploiement ignoré : secrets VPS non configurés" >> "$GITHUB_STEP_SUMMARY"
+            echo "configured=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "configured=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v7
+        if: steps.secrets.outputs.configured == 'true'
+
+      - name: Configure SSH
+        if: steps.secrets.outputs.configured == 'true'
+        env:
+          VPS_HOST: ${{ secrets.VPS_HOST }}
+          VPS_PORT: ${{ secrets.VPS_PORT }}
+          VPS_SSH_KEY: ${{ secrets.VPS_SSH_KEY }}
+          VPS_KNOWN_HOSTS: ${{ secrets.VPS_KNOWN_HOSTS }}
+        run: |
+          install -d -m 700 ~/.ssh
+          printf '%s\n' "$VPS_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          if [ -n "$VPS_KNOWN_HOSTS" ]; then
+            # pinned host key (recommended): strict checking
+            printf '%s\n' "$VPS_KNOWN_HOSTS" > ~/.ssh/known_hosts
+            checking=yes
+          else
+            checking=accept-new
+          fi
+          chmod 600 ~/.ssh/known_hosts 2>/dev/null || true
+          {
+            echo "Host vps"
+            echo "  HostName $VPS_HOST"
+            echo "  Port ${VPS_PORT:-22}"
+            echo "  IdentityFile ~/.ssh/deploy_key"
+            echo "  IdentitiesOnly yes"
+            echo "  StrictHostKeyChecking $checking"
+            echo "  UserKnownHostsFile ~/.ssh/known_hosts"
+            echo "  ServerAliveInterval 30"
+          } > ~/.ssh/config
+          chmod 600 ~/.ssh/config
+
+      - name: Copy compose files
+        if: steps.secrets.outputs.configured == 'true'
+        env:
+          VPS_USER: ${{ secrets.VPS_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          remote_path=$(printf '%q' "$DEPLOY_PATH")
+          # shellcheck disable=SC2029 # the path is quoted locally with %q on purpose
+          ssh "$VPS_USER@vps" "mkdir -p $remote_path/searxng"
+          scp docker/compose.yml "$VPS_USER@vps:$remote_path/compose.yml"
+          scp docker/searxng/settings.yml "$VPS_USER@vps:$remote_path/searxng/settings.yml"
+
+      - name: Deploy, check health, roll back on failure
+        if: steps.secrets.outputs.configured == 'true'
+        env:
+          VPS_USER: ${{ secrets.VPS_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          cat > deploy.sh <<'SCRIPT'
+          set -euo pipefail
+          new_tag="$1"
+          cd "$2"
+          prev_tag=""
+          if [ -f .image_tag ]; then prev_tag=$(cat .image_tag); fi
+
+          deploy() {
+            echo "==> deploying image tag $1"
+            IMAGE_TAG="$1" docker compose pull
+            IMAGE_TAG="$1" docker compose up -d --remove-orphans
+          }
+
+          healthy() {
+            # probe from inside the web container: works whether or not a host port is
+            # published (Traefik setup) and needs no curl on the host
+            deadline=$(( $(date +%s) + 120 ))
+            while [ "$(date +%s)" -lt "$deadline" ]; do
+              if IMAGE_TAG="$1" docker compose exec -T web python -c "import sys, urllib.request; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8080/healthz', timeout=4).status == 200 else 1)" >/dev/null 2>&1; then
+                return 0
+              fi
+              sleep 5
+            done
+            return 1
+          }
+
+          if deploy "$new_tag" && healthy "$new_tag"; then
+            printf '%s\n' "$new_tag" > .image_tag
+            echo "==> $new_tag is healthy"
+            docker image prune -f >/dev/null || true
+            exit 0
+          fi
+
+          echo "==> $new_tag failed the health check" >&2
+          IMAGE_TAG="$new_tag" docker compose logs --tail 50 web worker >&2 || true
+          if [ -n "$prev_tag" ]; then
+            echo "==> rolling back to $prev_tag" >&2
+            deploy "$prev_tag" && healthy "$prev_tag" || echo "==> rollback is not healthy either" >&2
+          else
+            echo "==> no previous tag to roll back to" >&2
+          fi
+          exit 1
+          SCRIPT
+          # shellcheck disable=SC2029 # arguments are quoted locally with %q on purpose
+          ssh "$VPS_USER@vps" "bash -s -- $(printf '%q' "$VERSION") $(printf '%q' "$DEPLOY_PATH")" < deploy.sh
+
+      - name: Summary
+        if: steps.secrets.outputs.configured == 'true'
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: echo "### version $VERSION déployée" >> "$GITHUB_STEP_SUMMARY"

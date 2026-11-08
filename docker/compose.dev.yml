@@ -1,0 +1,29 @@
+# Local development override (Windows + Docker Desktop or Linux). From the repository root:
+#   docker compose -f docker/compose.yml -f docker/compose.dev.yml up --build
+# Then open http://localhost:8080. The .env file is docker/.env (copy of .env.example).
+
+services:
+  web:
+    image: veille-journal:dev
+    build: &build
+      context: ..
+      dockerfile: docker/Dockerfile
+      args:
+        VERSION: dev
+    pull_policy: build
+    ports: !override
+      - "127.0.0.1:8080:8080"
+    environment:
+      # plain http on localhost: the session cookie must not require HTTPS
+      COOKIE_SECURE: "false"
+
+  worker:
+    image: veille-journal:dev
+    build: *build
+    pull_policy: build
+    environment:
+      COOKIE_SECURE: "false"
+
+  ollama:
+    # A laptop may have fewer CPUs than the production limit (docker refuses to start then).
+    cpus: !reset null
