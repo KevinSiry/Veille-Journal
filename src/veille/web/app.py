@@ -8,11 +8,12 @@ from pathlib import Path
 
 from fastapi import Depends, FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import RedirectResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from starlette.middleware.sessions import SessionMiddleware
 from starlette.responses import Response
+from starlette.types import ASGIApp
 
 from veille.clock import SystemClock
 from veille.config import Settings
@@ -36,6 +37,30 @@ logger = logging.getLogger(__name__)
 
 STATIC_DIR = Path(__file__).parent / "static"
 SESSION_COOKIE = "veille_session"
+
+SERVER_ERROR_PAGE = """<!doctype html>
+<html lang="fr">
+<head><meta charset="utf-8"><title>Erreur 500</title>
+<link rel="stylesheet" href="/static/pico.min.css"></head>
+<body><main class="container"><article>
+<h1>Erreur 500</h1>
+<p>Une erreur interne est survenue. Réessayez plus tard.</p>
+<p><a href="/">Retour à l'accueil</a></p>
+</article></main></body>
+</html>
+"""
+
+
+class VeilleApp(FastAPI):
+    """FastAPI app whose outermost layer adds the security headers.
+
+    Starlette's ``ServerErrorMiddleware`` sits outside every user middleware, so a
+    header middleware added with ``add_middleware`` misses the 500 responses. Wrapping
+    the whole stack covers them too.
+    """
+
+    def build_middleware_stack(self) -> ASGIApp:
+        return SecurityHeadersMiddleware(super().build_middleware_stack())
 
 
 def _is_htmx(request: Request) -> bool:
@@ -77,6 +102,11 @@ async def _validation_error_handler(request: Request, exc: Exception) -> Respons
     )
 
 
+async def _server_error_handler(request: Request, exc: Exception) -> Response:
+    # Runs outside the session middleware: no template (it needs the session).
+    return HTMLResponse(SERVER_ERROR_PAGE, status_code=500)
+
+
 def create_app(
     settings: Settings,
     *,
@@ -92,7 +122,7 @@ def create_app(
     if not password_hash:
         logger.warning("APP_PASSWORD_HASH is empty: login is impossible")
 
-    app = FastAPI(
+    app = VeilleApp(
         title="Veille Journal",
         version=settings.version,
         docs_url=None,
@@ -122,8 +152,9 @@ def create_app(
     app.add_exception_handler(AuthRequiredError, _auth_required_handler)
     app.add_exception_handler(StarletteHTTPException, _http_error_handler)
     app.add_exception_handler(RequestValidationError, _validation_error_handler)
+    app.add_exception_handler(Exception, _server_error_handler)
 
-    # Order: the last added middleware is the outermost one.
+    # Security headers are added by VeilleApp around the whole stack.
     app.add_middleware(
         SessionMiddleware,
         secret_key=secret,
@@ -132,5 +163,4 @@ def create_app(
         same_site="lax",
         https_only=settings.cookie_secure,
     )
-    app.add_middleware(SecurityHeadersMiddleware)
     return app
