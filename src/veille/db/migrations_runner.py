@@ -43,30 +43,61 @@ def applied_versions(conn: sqlite3.Connection) -> set[str]:
     return {row[0] for row in conn.execute("SELECT version FROM schema_migrations")}
 
 
+def split_statements(sql: str) -> list[str]:
+    """Split a migration script into statements (``;`` inside strings, comments and
+    ``CREATE TRIGGER ... END`` bodies is handled by ``sqlite3.complete_statement``)."""
+    statements: list[str] = []
+    buffer = ""
+    for part in sql.split(";"):
+        buffer += part + ";"
+        if sqlite3.complete_statement(buffer):
+            if _has_code(buffer):
+                statements.append(buffer.strip())
+            buffer = ""
+    if _has_code(buffer.rstrip(";")):  # trailing statement without ';'
+        statements.append(buffer.rstrip(";").strip())
+    return statements
+
+
+def _has_code(text: str) -> bool:
+    lines = (line.split("--", 1)[0] for line in text.splitlines())
+    return bool("".join(lines).strip(" \t\r\n;"))
+
+
 def apply_migrations(conn: sqlite3.Connection, package: Traversable | None = None) -> list[str]:
-    """Apply pending migrations, each in its own transaction. Returns new versions."""
+    """Apply pending migrations, each in its own ``BEGIN IMMEDIATE`` transaction.
+
+    The applied versions are re-read inside the write transaction, so two processes
+    migrating the same fresh file concurrently (web + worker at first boot) apply each
+    migration once: the second one waits for the lock, then skips. Returns new versions.
+    """
     done = applied_versions(conn)
     newly: list[str] = []
     for version, file in available_migrations(package):
         if version in done:
             continue
-        sql = file.read_text(encoding="utf-8")
-        applied_at = datetime.now(UTC).isoformat(timespec="microseconds")
-        # The version matches \d{3} and applied_at is generated here: safe to inline.
-        script = (
-            "BEGIN IMMEDIATE;\n"
-            f"{sql}\n;\n"
-            "INSERT INTO schema_migrations (version, applied_at) "
-            f"VALUES ('{version}', '{applied_at}');\n"
-            "COMMIT;"
-        )
+        statements = split_statements(file.read_text(encoding="utf-8"))
+        conn.execute("BEGIN IMMEDIATE")
         try:
-            conn.executescript(script)
-        except sqlite3.Error:
+            already = conn.execute(
+                "SELECT 1 FROM schema_migrations WHERE version = ?", (version,)
+            ).fetchone()
+            if already is None:
+                for statement in statements:
+                    conn.execute(statement)
+                conn.execute(
+                    "INSERT INTO schema_migrations (version, applied_at) VALUES (?, ?)",
+                    (version, datetime.now(UTC).isoformat(timespec="microseconds")),
+                )
+        except BaseException:
             if conn.in_transaction:
                 conn.execute("ROLLBACK")
             logger.exception("Migration %s failed", file.name)
             raise
+        conn.execute("COMMIT")
+        if already is not None:
+            logger.info("Migration %s already applied by another process", file.name)
+            continue
         logger.info("Applied migration %s", file.name)
         newly.append(version)
     return newly

@@ -93,6 +93,26 @@ def test_save_article_force_replaces(store: SqliteStore) -> None:
     assert [h.article.id for h in store.search("nouveauword")] == [art.id]
 
 
+def test_force_demotes_items_used_by_the_replaced_article(store: SqliteStore) -> None:
+    t = store.create_theme("T", "", [])
+    store.save_article(
+        make_draft(t.id, links=(("https://a",), ("https://b",))),
+        [make_item("https://a"), make_item("https://b")],
+        force=False,
+    )
+    # Re-run: only https://b is re-collected and used again, https://a is not collected.
+    forced = make_draft(t.id, links=(("https://b",),))
+    assert store.save_article(forced, [make_item("https://b")], force=True) is True
+    statuses = dict(store.connection.execute("SELECT canonical_url, status FROM items").fetchall())
+    assert statuses == {"https://a": "dropped", "https://b": "used"}
+    # Every USED item is linked from an entry.
+    orphans = store.connection.execute(
+        "SELECT COUNT(*) FROM items WHERE status = 'used' "
+        "AND id NOT IN (SELECT item_id FROM entry_sources)"
+    ).fetchone()[0]
+    assert orphans == 0
+
+
 def test_upsert_keeps_first_fetched_at(store: SqliteStore) -> None:
     t = store.create_theme("T", "", [])
     old = NOW - timedelta(days=3)

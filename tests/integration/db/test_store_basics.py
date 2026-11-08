@@ -14,11 +14,11 @@ from .conftest import NOW, make_draft, make_item
 
 
 def test_migrate_fresh_then_idempotent(db_path: Path) -> None:
-    assert migrate(db_path) == ["001"]
+    assert migrate(db_path) == ["001", "002"]
     assert migrate(db_path) == []
     conn = connect(db_path)
     rows = conn.execute("SELECT version, applied_at FROM schema_migrations").fetchall()
-    assert [r["version"] for r in rows] == ["001"]
+    assert [r["version"] for r in rows] == ["001", "002"]
     conn.close()
     with open_store(db_path) as store:
         assert store.ping()

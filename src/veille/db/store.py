@@ -7,6 +7,7 @@ import logging
 import sqlite3
 import sys
 import threading
+import time
 from array import array
 from collections.abc import Iterable, Iterator, Sequence
 from contextlib import contextmanager
@@ -34,7 +35,10 @@ from veille.contracts import (
 
 logger = logging.getLogger(__name__)
 
-RUN_LOCK_TTL = timedelta(hours=3)
+# A 'running' run whose heartbeat (or start) is older than this is considered abandoned.
+RUN_LOCK_TTL = timedelta(minutes=30)
+FINISH_RUN_ATTEMPTS = 3
+FINISH_RUN_BACKOFF_S = 0.5
 # Stays well below SQLite's default SQLITE_MAX_VARIABLE_NUMBER (32766).
 _IN_CHUNK = 500
 
@@ -43,6 +47,8 @@ _ARTICLE_COLUMNS = (
     "a.generated_at, a.entry_count, a.status"
 )
 
+
+_sleep = time.sleep  # patched by tests
 
 # ------------------------------------------------------------------ conversions
 
@@ -197,10 +203,11 @@ class SqliteStore:
             self._conn.execute("BEGIN IMMEDIATE")
             try:
                 yield self._conn
+                self._conn.execute("COMMIT")
             except BaseException:
-                self._conn.execute("ROLLBACK")
+                if self._conn.in_transaction:  # also when COMMIT itself failed
+                    self._conn.execute("ROLLBACK")
                 raise
-            self._conn.execute("COMMIT")
 
     def _all(self, sql: str, params: Sequence[Any] = ()) -> list[sqlite3.Row]:
         with self._lock:
@@ -396,6 +403,16 @@ class SqliteStore:
             ).fetchone()
             if existing is not None and not force:
                 return False
+            if existing is not None:
+                # Items linked by the replaced article and not re-collected would stay
+                # USED without any entry_sources row: demote them first (the upsert
+                # below sets the new status of the re-collected ones).
+                conn.execute(
+                    "UPDATE items SET status = 'dropped' WHERE id IN ("
+                    "SELECT es.item_id FROM entry_sources es "
+                    "JOIN article_entries e ON e.id = es.entry_id WHERE e.article_id = ?)",
+                    (existing[0],),
+                )
 
             item_ids = {
                 item.canonical_url: self._upsert_item(conn, draft.theme_id, item) for item in items
@@ -553,14 +570,16 @@ class SqliteStore:
     # --------------------------------------------------------------------- runs
 
     def start_run(self, trigger: RunTrigger, now: datetime) -> int | None:
-        """Lock: None if a 'running' run started less than 3 h ago.
+        """Lock: None if a 'running' run beat (or started) less than RUN_LOCK_TTL ago.
 
         Older 'running' runs are considered abandoned and marked 'error'.
         """
         threshold = to_db_datetime(now - RUN_LOCK_TTL)
+        stamp = to_db_datetime(now)
         with self._tx() as conn:
             busy = conn.execute(
-                "SELECT id FROM runs WHERE status = 'running' AND started_at > ? LIMIT 1",
+                "SELECT id FROM runs WHERE status = 'running' "
+                "AND COALESCE(heartbeat_at, started_at) > ? LIMIT 1",
                 (threshold,),
             ).fetchone()
             if busy is not None:
@@ -571,11 +590,18 @@ class SqliteStore:
                 "WHERE status = 'running'"
             )
             run_id: int = conn.execute(
-                "INSERT INTO runs (started_at, trigger, status) VALUES (?, ?, 'running') "
-                "RETURNING id",
-                (to_db_datetime(now), trigger.value),
+                "INSERT INTO runs (started_at, heartbeat_at, trigger, status) "
+                "VALUES (?, ?, ?, 'running') RETURNING id",
+                (stamp, stamp, trigger.value),
             ).fetchone()[0]
         return run_id
+
+    def heartbeat_run(self, run_id: int, now: datetime) -> None:
+        with self._tx() as conn:
+            conn.execute(
+                "UPDATE runs SET heartbeat_at = ? WHERE id = ? AND status = 'running'",
+                (to_db_datetime(now), run_id),
+            )
 
     def finish_run(
         self,
@@ -586,17 +612,31 @@ class SqliteStore:
         finished_at: datetime,
         error: str | None = None,
     ) -> None:
+        """Retried (short backoff) on "database is locked": losing the final status
+        would leave the run 'running' until the lock goes stale."""
+        values = (
+            status.value,
+            json.dumps(stats.to_json_dict(), ensure_ascii=False),
+            to_db_datetime(finished_at),
+            error,
+            run_id,
+        )
+        for attempt in range(1, FINISH_RUN_ATTEMPTS + 1):
+            try:
+                self._write_finished_run(values)
+                return
+            except sqlite3.OperationalError as exc:
+                if "locked" not in str(exc) or attempt == FINISH_RUN_ATTEMPTS:
+                    raise
+                logger.warning("finish_run(%s) attempt %d: %s, retrying", run_id, attempt, exc)
+                _sleep(FINISH_RUN_BACKOFF_S * attempt)
+
+    def _write_finished_run(self, values: Sequence[Any]) -> None:
         with self._tx() as conn:
             conn.execute(
                 "UPDATE runs SET status = ?, stats_json = ?, finished_at = ?, error = ? "
                 "WHERE id = ?",
-                (
-                    status.value,
-                    json.dumps(stats.to_json_dict(), ensure_ascii=False),
-                    to_db_datetime(finished_at),
-                    error,
-                    run_id,
-                ),
+                values,
             )
 
     def last_run(self) -> Run | None:

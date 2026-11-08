@@ -255,6 +255,10 @@ class Collector(Protocol):
 
     Must never raise for a single bad feed/query: log and skip. May raise CollectError
     only for a total failure.
+
+    Optional (duck-typed, not part of the Protocol): ``has_work(theme, sources) -> bool``.
+    When it returns False (e.g. RSS for a theme without feeds) the pipeline skips the
+    collector, so its empty result cannot mask the failure of the others.
     """
 
     name: str
@@ -368,7 +372,12 @@ class Store(Protocol):
     # runs
     def start_run(self, trigger: RunTrigger, now: datetime) -> int | None:
         """Insert a 'running' run and return its id, or None if another run is
-        'running' and started less than 3 hours ago (acts as the run lock)."""
+        'running' and its heartbeat (or start, if it never beat) is less than 30 minutes
+        old (acts as the run lock)."""
+        ...
+
+    def heartbeat_run(self, run_id: int, now: datetime) -> None:
+        """Refresh the lock of a 'running' run (called before each theme)."""
         ...
 
     def finish_run(
