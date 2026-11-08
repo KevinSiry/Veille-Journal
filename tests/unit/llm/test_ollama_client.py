@@ -104,9 +104,9 @@ def test_other_http_error_and_timeout(settings: Settings) -> None:
         client.chat_json("s", "u", SCHEMA)
     assert not isinstance(exc.value, LLMUnavailableError)
     route.mock(side_effect=httpx.ReadTimeout("slow"))
-    with pytest.raises(LLMError) as exc:
+    # A read timeout = model busy: unavailable, so the pipeline can stop early.
+    with pytest.raises(LLMUnavailableError, match="délai dépassé"):
         client.chat_json("s", "u", SCHEMA)
-    assert not isinstance(exc.value, LLMUnavailableError)
     route.mock(side_effect=httpx.RemoteProtocolError("boom"))
     with pytest.raises(LLMError):
         client.chat_json("s", "u", SCHEMA)

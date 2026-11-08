@@ -71,7 +71,9 @@ class OllamaClient:
             except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
                 raise LLMUnavailableError(f"Ollama injoignable ({url}) : {exc}") from exc
             except httpx.TimeoutException as exc:
-                raise LLMError(f"Délai dépassé pour Ollama ({path})") from exc
+                # A read timeout means the model is busy (CPU-bound generation): callers
+                # treat it like 503, i.e. retrying or going on is pointless for now.
+                raise LLMUnavailableError(f"Ollama occupé : délai dépassé ({path})") from exc
             except httpx.HTTPError as exc:
                 raise LLMError(f"Erreur réseau Ollama ({path}) : {exc}") from exc
         if response.status_code == 503:
