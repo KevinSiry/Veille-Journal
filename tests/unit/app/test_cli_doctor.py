@@ -98,3 +98,108 @@ def test_run_command_uses_wiring(tmp_path: Path, monkeypatch: pytest.MonkeyPatch
     monkeypatch.setattr(veille.wiring, "run_once", fake_run_once)
     assert cli.main(["run", "--force", "--theme", "3"]) == 0
     assert seen["force"] is True and seen["theme_ids"] == [3]
+
+
+def test_stop_handler_idle_sets_event_busy_raises() -> None:
+    import threading
+
+    stop, busy = threading.Event(), threading.Event()
+    handler = cli.make_stop_handler(stop, busy)
+    handler(15, None)
+    assert stop.is_set()
+    stop.clear()
+    busy.set()
+    with pytest.raises(KeyboardInterrupt):
+        handler(15, None)
+    assert stop.is_set()
+
+
+def _patch_worker(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> dict[str, object]:
+    import os
+    import signal
+
+    import veille.scheduler
+    import veille.wiring
+
+    monkeypatch.setattr(cli, "get_settings", lambda: _settings(tmp_path))
+    if hasattr(os, "nice"):
+        monkeypatch.setattr(os, "nice", lambda n: 0)
+    handlers: dict[int, object] = {}
+
+    def fake_signal(sig: int, handler: object) -> object:  # records, never installs
+        previous = handlers.get(sig, signal.SIG_DFL)
+        handlers[sig] = handler
+        return previous
+
+    monkeypatch.setattr("signal.signal", fake_signal)
+    seen: dict[str, object] = {"handlers": handlers}
+
+    def fake_run_forever(job, **kwargs):  # type: ignore[no-untyped-def]
+        seen.update(kwargs)
+        seen["result"] = job()
+
+    monkeypatch.setattr(veille.scheduler, "run_forever", fake_run_forever)
+    monkeypatch.setattr(veille.wiring, "run_once", lambda settings, **kw: 0)
+    return seen
+
+
+def test_worker_sigterm_during_run_interrupts_it(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import signal
+
+    import veille.wiring
+
+    seen = _patch_worker(monkeypatch, tmp_path)
+
+    def run_once(settings: Settings, **kwargs: object) -> int:
+        handler = seen["handlers"][signal.SIGTERM]  # type: ignore[index]
+        handler(signal.SIGTERM, None)  # SIGTERM arrives while the job runs
+        return 0  # pragma: no cover - not reached
+
+    monkeypatch.setattr(veille.wiring, "run_once", run_once)
+    assert cli.main(["worker"]) == cli.EXIT_INTERRUPTED
+    assert seen["stop"].is_set()  # type: ignore[attr-defined]
+
+
+def test_worker_catch_up_when_today_was_missed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    seen = _patch_worker(monkeypatch, tmp_path)
+    monkeypatch.setattr("veille.scheduler.needs_catch_up", lambda now, at, tz, last: last is None)
+    assert cli.main(["worker"]) == 0
+    assert seen["catch_up"] is True and seen["result"] == 0
+
+
+def test_last_run_started(tmp_path: Path) -> None:
+    from datetime import UTC, datetime
+
+    from veille.contracts import RunTrigger
+    from veille.db import migrate, open_store
+
+    settings = _settings(tmp_path)
+    migrate(settings.database_path)
+    assert cli._last_run_started(settings) is None
+    started = datetime(2026, 11, 8, 4, 30, tzinfo=UTC)
+    with open_store(settings.database_path) as store:
+        store.start_run(RunTrigger.CRON, started)
+    assert cli._last_run_started(settings) == started
+
+
+def test_run_command_ctrl_c_returns_130(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    import signal
+
+    import veille.wiring
+
+    monkeypatch.setattr(cli, "get_settings", lambda: _settings(tmp_path))
+    before = signal.getsignal(signal.SIGTERM)
+
+    def interrupted(settings: Settings, **kwargs: object) -> int:
+        assert signal.getsignal(signal.SIGTERM) is cli._raise_interrupt
+        with pytest.raises(KeyboardInterrupt):
+            cli._raise_interrupt(signal.SIGTERM, None)
+        raise KeyboardInterrupt
+
+    monkeypatch.setattr(veille.wiring, "run_once", interrupted)
+    assert cli.main(["run"]) == cli.EXIT_INTERRUPTED
+    assert signal.getsignal(signal.SIGTERM) is before  # restored

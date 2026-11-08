@@ -5,7 +5,9 @@ from __future__ import annotations
 import argparse
 import getpass
 import sys
-from collections.abc import Sequence
+import threading
+from collections.abc import Callable, Sequence
+from datetime import datetime
 
 from veille.config import Settings, get_settings
 
@@ -34,14 +36,59 @@ def _settings() -> Settings:
     return settings
 
 
+EXIT_INTERRUPTED = 130
+
+
+def _raise_interrupt(signum: int, frame: object) -> None:
+    raise KeyboardInterrupt(f"signal {signum}")
+
+
 def _cmd_run(args: argparse.Namespace) -> int:
+    import logging
+    import signal
+
     from veille.contracts import RunTrigger
     from veille.db import migrate
     from veille.wiring import run_once
 
     settings = _settings()
     migrate(settings.database_path)
-    return run_once(settings, trigger=RunTrigger.CLI, force=args.force, theme_ids=args.theme)
+    # SIGTERM (docker stop) behaves like Ctrl+C: the run is recorded as ERROR.
+    previous = signal.signal(signal.SIGTERM, _raise_interrupt)
+    try:
+        return run_once(settings, trigger=RunTrigger.CLI, force=args.force, theme_ids=args.theme)
+    except KeyboardInterrupt:
+        logging.getLogger(__name__).warning("run interrupted")
+        print("Exécution interrompue.", file=sys.stderr)
+        return EXIT_INTERRUPTED
+    finally:
+        signal.signal(signal.SIGTERM, previous)
+
+
+def make_stop_handler(
+    stop: threading.Event, busy: threading.Event
+) -> Callable[[int, object], None]:
+    """Signal handler for the worker: idle -> just stop the loop; while a job runs ->
+    also raise KeyboardInterrupt in the main thread, so the run's ``finally`` records
+    ERROR and open transactions roll back."""
+
+    def handler(signum: int, frame: object) -> None:
+        stop.set()
+        if busy.is_set():
+            raise KeyboardInterrupt(f"signal {signum}")
+
+    return handler
+
+
+def _last_run_started(settings: Settings) -> datetime | None:
+    from veille.db import SqliteStore, connect
+
+    store = SqliteStore(connect(settings.database_path))
+    try:
+        last = store.last_run()
+    finally:
+        store.close()
+    return last.started_at if last is not None else None
 
 
 def _cmd_serve(args: argparse.Namespace) -> int:
@@ -63,14 +110,14 @@ def _cmd_serve(args: argparse.Namespace) -> int:
 
 
 def _cmd_worker(args: argparse.Namespace) -> int:
+    import logging
     import os
     import signal
-    import threading
 
     from veille.clock import SystemClock
     from veille.contracts import RunTrigger
     from veille.db import migrate
-    from veille.scheduler import run_forever
+    from veille.scheduler import needs_catch_up, run_forever
     from veille.wiring import run_once
 
     settings = _settings()
@@ -78,19 +125,36 @@ def _cmd_worker(args: argparse.Namespace) -> int:
         os.nice(10)  # low CPU priority: the VPS is shared
     migrate(settings.database_path)
     stop = threading.Event()
+    busy = threading.Event()
+    handler = make_stop_handler(stop, busy)
+    previous = {sig: signal.signal(sig, handler) for sig in (signal.SIGTERM, signal.SIGINT)}
 
-    def _stop(signum: int, frame: object) -> None:
-        stop.set()
+    def job() -> int:
+        busy.set()
+        try:
+            return run_once(settings, trigger=RunTrigger.CRON)
+        finally:
+            busy.clear()
 
-    signal.signal(signal.SIGTERM, _stop)
-    signal.signal(signal.SIGINT, _stop)
-    run_forever(
-        lambda: run_once(settings, trigger=RunTrigger.CRON),
-        clock=SystemClock(),
-        run_at=settings.run_at,
-        tz=settings.tz,
-        stop=stop,
+    clock = SystemClock()
+    catch_up = needs_catch_up(
+        clock.now(), settings.run_at, settings.tz, _last_run_started(settings)
     )
+    try:
+        run_forever(
+            job,
+            clock=clock,
+            run_at=settings.run_at,
+            tz=settings.tz,
+            stop=stop,
+            catch_up=catch_up,
+        )
+    except KeyboardInterrupt:
+        logging.getLogger(__name__).warning("worker interrupted during a run")
+        return EXIT_INTERRUPTED
+    finally:
+        for sig, old_handler in previous.items():
+            signal.signal(sig, old_handler)
     return 0
 
 

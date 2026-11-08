@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable
+from contextlib import ExitStack
 from typing import TYPE_CHECKING
 
 from veille.clock import SystemClock
@@ -24,12 +25,14 @@ def configure_logging(settings: Settings) -> None:
 
 
 def store_factory(settings: Settings) -> Callable[[], Store]:
-    from veille.db import open_store
+    """Per-request store: a plain connection, no migration (``build_web_app`` and the
+    worker migrate once at startup)."""
+    from veille.db import SqliteStore, connect
 
     path = settings.database_path
 
     def factory() -> Store:
-        return open_store(path)
+        return SqliteStore(connect(path))
 
     return factory
 
@@ -74,14 +77,20 @@ def run_once(
     from veille.llm.ollama_client import OllamaClient
     from veille.pipeline.run import run_pipeline
 
-    http = SafeHttp(settings)
-    store = open_store(settings.database_path)
-    try:
+    with ExitStack() as stack:
+        http = SafeHttp(settings)
+        stack.callback(http.close)
+        searxng = SearxngCollector(settings, http=http)
+        stack.callback(searxng.close)
+        llm = OllamaClient(settings)
+        stack.callback(llm.close)
+        store = open_store(settings.database_path)
+        stack.callback(store.close)
         result = run_pipeline(
             store=store,
-            collectors=[RssCollector(settings, http), SearxngCollector(settings, http=http)],
+            collectors=[RssCollector(settings, http), searxng],
             extractor=TrafilaturaExtractor(settings, http),
-            llm=OllamaClient(settings),
+            llm=llm,
             clock=SystemClock(),
             settings=settings,
             canonicalize=canonicalize,
@@ -89,8 +98,6 @@ def run_once(
             force=force,
             theme_ids=theme_ids,
         )
-    finally:
-        store.close()
     if result.skipped_locked:
         logger.warning("another run is in progress, nothing done")
         return 3
