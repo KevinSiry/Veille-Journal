@@ -30,6 +30,7 @@ from veille.web.auth import (
 )
 from veille.web.routes import admin, journal, themes
 from veille.web.routes import auth as auth_routes
+from veille.web.routes.themes import KeywordSuggester
 from veille.web.security import SecurityHeadersMiddleware, csrf_protect
 from veille.web.templating import build_templates, render
 
@@ -140,6 +141,7 @@ def create_app(
     app.state.login_limiter = LoginRateLimiter(resolved_clock)
     app.state.verify_gate = VerifyGate()
     app.state.sessions = SessionRegistry(resolved_clock)
+    app.state.keyword_suggester = KeywordSuggester()
 
     protected = [Depends(require_auth)]
     app.include_router(auth_routes.router)
