@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from starlette.responses import Response
 
 from veille.contracts import Run, Store
+from veille.web.auth import is_authenticated
 from veille.web.deps import StoreDep
 from veille.web.templating import render
 
@@ -71,6 +72,9 @@ def _run_json(run: Run | None) -> dict[str, Any] | None:
 
 @public_router.get("/healthz")
 def healthz(request: Request) -> Response:
+    """Status + DB state for everyone (healthchecks only use the HTTP code); the last run
+    and the version only for an authenticated session."""
+    full = is_authenticated(request)
     factory: Callable[[], Store] = request.app.state.store_factory
     db_ok = False
     last_run: dict[str, Any] | None = None
@@ -81,17 +85,15 @@ def healthz(request: Request) -> Response:
     else:
         try:
             db_ok = bool(store.ping())
-            if db_ok:
+            if db_ok and full:
                 last_run = _run_json(store.last_run())
         except Exception:
             logger.exception("Health check: store error")
             db_ok = False
         finally:
             store.close()
-    body = {
-        "status": "ok" if db_ok else "degraded",
-        "db": db_ok,
-        "last_run": last_run,
-        "version": request.app.state.settings.version,
-    }
+    body: dict[str, Any] = {"status": "ok" if db_ok else "degraded", "db": db_ok}
+    if full:
+        body["last_run"] = last_run
+        body["version"] = request.app.state.settings.version
     return JSONResponse(body, status_code=200 if db_ok else 503)

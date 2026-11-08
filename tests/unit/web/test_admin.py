@@ -69,8 +69,16 @@ def test_running_run_and_odd_stats(auth_client: TestClient, env: Env) -> None:
     ]
 
 
-def test_healthz_ok_without_auth(client: TestClient, env: Env) -> None:
+def test_healthz_unauthenticated_is_minimal(client: TestClient, env: Env) -> None:
+    _add_runs(env, 1)
     response = client.get("/healthz")
+    assert response.status_code == 200
+    # No version nor run times for anonymous visitors: only what healthchecks need.
+    assert response.json() == {"status": "ok", "db": True}
+
+
+def test_healthz_authenticated_full_payload(auth_client: TestClient, env: Env) -> None:
+    response = auth_client.get("/healthz")
     assert response.status_code == 200
     assert response.json() == {
         "status": "ok",
@@ -79,7 +87,7 @@ def test_healthz_ok_without_auth(client: TestClient, env: Env) -> None:
         "version": "1.2.3-test",
     }
     _add_runs(env, 1)
-    last = client.get("/healthz").json()["last_run"]
+    last = auth_client.get("/healthz").json()["last_run"]
     assert last == {
         "id": 1,
         "status": "ok",
@@ -89,9 +97,12 @@ def test_healthz_ok_without_auth(client: TestClient, env: Env) -> None:
     assert env.store.closed >= 2
 
 
-def test_healthz_db_down(client: TestClient, env: Env) -> None:
+def test_healthz_db_down(client: TestClient, auth_client: TestClient, env: Env) -> None:
     env.store.ping_ok = False
     response = client.get("/healthz")
+    assert response.status_code == 503
+    assert response.json() == {"status": "degraded", "db": False}
+    response = auth_client.get("/healthz")
     assert response.status_code == 503
     assert response.json() == {
         "status": "degraded",
