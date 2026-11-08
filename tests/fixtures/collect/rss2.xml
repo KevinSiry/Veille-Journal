@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0">
+  <channel>
+    <title>Le Journal Tech</title>
+    <link>https://journal.example.com/</link>
+    <description>Actualités</description>
+    <item>
+      <title>  Sortie de &lt;b&gt;Python 3.13&lt;/b&gt;  </title>
+      <link>https://journal.example.com/articles/python-313?utm_source=rss</link>
+      <description><![CDATA[<p>La nouvelle version <strong>améliore</strong>&nbsp;les performances.</p><script>alert(1)</script><p>Deuxième   paragraphe &amp; fin.</p>]]></description>
+      <pubDate>Tue, 08 Oct 2024 14:30:00 +0200</pubDate>
+    </item>
+    <item>
+      <title>Article relatif sans date</title>
+      <link>/articles/relatif</link>
+      <description>Texte simple</description>
+    </item>
+    <item>
+      <title>Lien raccourci</title>
+      <link>https://t.co/abc123</link>
+      <description>Via un raccourcisseur</description>
+      <pubDate>Wed, 09 Oct 2024 08:00:00 GMT</pubDate>
+    </item>
+    <item>
+      <title>Sans lien</title>
+      <description>Ignoré</description>
+    </item>
+  </channel>
+</rss>
