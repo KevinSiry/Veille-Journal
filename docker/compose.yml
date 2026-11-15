@@ -84,7 +84,7 @@ services:
         condition: service_started
 
   ollama:
-    image: ollama/ollama:0.40.14
+    image: ollama/ollama:0.40.16
     environment:
       OLLAMA_NUM_PARALLEL: "1"
       OLLAMA_MAX_LOADED_MODELS: "2"
@@ -111,7 +111,7 @@ services:
   # One-shot: downloads the models on first start. Idempotent; a model already in the volume
   # never blocks startup, even offline (the refresh pull is best effort). Follow it: docker compose logs -f ollama-init
   ollama-init:
-    image: ollama/ollama:0.40.14
+    image: ollama/ollama:0.40.16
     environment:
       OLLAMA_HOST: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-qwen3:8b}
