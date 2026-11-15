@@ -148,7 +148,7 @@ services:
     logging: *logging
 
   searxng:
-    image: searxng/searxng:2026.11.2-cccbc9e15
+    image: searxng/searxng:2026.11.6-ac11e14c5
     environment:
       SEARXNG_SECRET: ${SEARXNG_SECRET:?SEARXNG_SECRET manquant dans .env}
       SEARXNG_BASE_URL: http://searxng:8080/
